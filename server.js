@@ -46,15 +46,15 @@ let bukhariHadiths = [], muslimHadiths = [], tirmidhiHadiths = [], nasaiHadiths 
 let malikHadiths = [], ibnMajahHadiths = [], darimiHadiths = [], ahmedHadiths = [], abuDawudHadiths = [];
 
 const urls = {
-  bukhari:   "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/bukhari.json",
-  muslim:    "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/muslim.json",
-  tirmidhi:  "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/tirmidhi.json",
-  nasai:     "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/nasai.json",
-  malik:     "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/malik.json",
-  ibnmajah:  "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/ibnmajah.json",
-  darimi:    "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/darimi.json",
-  ahmed:     "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/ahmed.json",
-  abudawud:  "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/abudawud.json"
+  bukhari:   "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/bukhari.json?alt=media&token=1276aa2e-2ab9-4a62-851a-c82e85e2d8e1",
+  muslim:    "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/muslim.json?alt=media&token=95adbddd-1823-4a6b-91cb-371053712639",
+  tirmidhi:  "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/tirmidhi.json?alt=media&token=7df7efae-3c6a-4122-8f24-ea5f564c5888",
+  nasai:     "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/nasai.json?alt=media&token=a478d55f-2f82-429f-9342-927e63cb37f8",
+  malik:     "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/malik.json?alt=media&token=4a721b08-df53-4687-87a4-56c04d142b66",
+  ibnmajah:  "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/ibnmajah.json?alt=media&token=b55c7a70-e6f1-4627-855e-4ad281a554f8",
+  darimi:    "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/darimi.json?alt=media&token=c7f3f2e7-55b9-470c-a155-0a371215338c",
+  ahmed:     "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/ahmed.json?alt=media&token=3ab8844d-9fac-4a4e-83a2-14edcf324e7f",
+  abudawud:  "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/abudawud.json?alt=media&token=903057ad-8f4f-4c86-b401-d1fbc09d8d56"
 };
 
 async function loadHadiths() {
