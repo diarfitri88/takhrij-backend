@@ -46,15 +46,15 @@ let bukhariHadiths = [], muslimHadiths = [], tirmidhiHadiths = [], nasaiHadiths 
 let malikHadiths = [], ibnMajahHadiths = [], darimiHadiths = [], ahmedHadiths = [], abuDawudHadiths = [];
 
 const urls = {
-  bukhari:   "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/bukhari.json",
-  muslim:    "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/muslim.json",
-  tirmidhi:  "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/tirmidhi.json",
-  nasai:     "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/nasai.json",
-  malik:     "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/malik.json",
-  ibnmajah:  "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/ibnmajah.json",
-  darimi:    "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/darimi.json",
-  ahmed:     "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/ahmed.json",
-  abudawud:  "https://cdn.glitch.global/a5139d27-6089-40a1-879f-ac5230486f6e/abudawud.json"
+  bukhari:   "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/bukhari.json",
+  muslim:    "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/muslim.json",
+  tirmidhi:  "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/tirmidhi.json",
+  nasai:     "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/nasai.json",
+  malik:     "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/malik.json",
+  ibnmajah:  "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/ibnmajah.json",
+  darimi:    "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/darimi.json",
+  ahmed:     "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/ahmed.json",
+  abudawud:  "https://raw.githubusercontent.com/diarfitri88/takhrij-backend/main/hadith/abudawud.json"
 };
 
 async function loadHadiths() {
