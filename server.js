@@ -267,8 +267,6 @@ Disclaimer: This grading is for educational purposes only. Always consult schola
 Hadith Reference: ${reference || "unknown"}
 Hadith Text: ${snippet}
 `;
-
-`;
   try {
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
