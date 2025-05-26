@@ -185,7 +185,7 @@ ${q}"
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "openai/gpt-3.5-turbo-0613",
+        model: "openai/gpt-4o-mini",
         messages: [{ role: "system", content: prompt }],
         max_tokens: 500
       },
@@ -280,7 +280,7 @@ Hadith Text: ${snippet}
         model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.2,
-        max_tokens: 300
+        max_tokens: 400
       },
       {
         headers: {
