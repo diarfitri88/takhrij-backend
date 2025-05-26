@@ -223,64 +223,77 @@ ${q}"
 });
 
 // ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
+// ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
   const englishFull = (req.body.english || "").trim();
-  const reference = (req.body.reference || "").trim();
-  const cacheKey = reference || englishFull;
+  const reference   = (req.body.reference || "").trim();
+  const collection  = (req.body.collection || "").trim();
+  const cacheKey    = reference + "|" + collection;
 
-  if (!cacheKey) {
-    return res.status(400).json({ error: "Missing reference or English matn." });
+  if (!englishFull || !reference || !collection) {
+    return res.status(400).json({ error: "Missing reference, collection, or English matn." });
   }
 
+  // Truncate to 500 chars, single-line
   const snippet = truncate(englishFull, 500);
 
+  // Return cached if available
   if (commentaryCache[cacheKey]) {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
-  const prompt = `You are an expert hadith explainer and grader. You must use only established, verifiable sources listed below.  
-If a hadith does not appear in these sources, you must clearly say so and refuse to guess or grade.
+  // Build system + user messages
+  const messages = [
+    {
+      role: "system",
+      content: `
+You are an expert hadith explainer and grader. This hadith is from the collection: **${collection}**.
 
-**Allowed sources (and only these):**
+Allowed sources (only these):
 - Sahih Bukhari (all entries are Sahih)
 - Sahih Muslim (all entries are Sahih)
 - Silsilat al-Ahadith as-Sahihah (Albani; only Sahih)
-- Silsilat al-Ahadith ad-Da'ifah (Albani; only Daif/Very Weak/Fabricated)
+- Silsilat al-Ahadith ad-Da'ifah (Albani; only Da'if/Very Weak/Fabricated)
 - Sunan Tirmidhi, Sunan Abu Dawud, Sunan Nasai, Sunan Ibn Majah, Musnad Ahmad, Muwatta Malik, Sunan ad-Darimi
-- Explicit gradings by Ibn Hajar, Al-Dhahabi, Ibn Baz, Ibn Uthaymin
+- Ibn Hajar, Al-Dhahabi, Ibn Baz, Ibn Uthaymeen
 
-**STRICT Rules:**
-1. **Only grade if you find a direct grading by one of the above sources.** If you cannot find a grading, state:  
-   "Grade: No grading available"
-2. **Never invent or assume** any isnad, source, or grading.
-3. **If Albani’s Silsilat as-Sahihah is the source, Grade must be Sahih.**  
-   **If Albani’s Silsilat ad-Da’ifah is the source, Grade must be Daif, Very Weak, or Fabricated.**  
-   **Never grade “Hasan” or “Sahih” from Silsilat ad-Da’ifah, and never grade “Hasan” from Silsilat as-Sahihah.**
-4. **Hasan** may only be used if a recognized compiler (like Tirmidhi) graded it explicitly as Hasan.
-5. **If a hadith is in Bukhari or Muslim, always reply:**  
-   "Grade: Sahih (by consensus of scholars)"
-6. **Never summarize or make up explanations if you don’t find the hadith.** Instead, respond:  
-   "Commentary: This hadith is not found in any of the nine major hadith books or the above sources."
-   "Grade: No grading available"
-   "Evaluation: The hadith text or reference does not appear in any verified collection."
-7. **No guessing, no invented book titles, no invented scholars.** If no match, refuse.
+STRICT RULES:
+1) Grade exactly as **${collection}** does.  
+2) NEVER invent or guess. If no direct grading exists in **${collection}**, respond:
+   Grade: No grading available  
+3) If **${collection}** is "Sahih Bukhari" or "Sahih Muslim", respond:
+   Grade: Sahih (by consensus of scholars)  
+4) If **${collection}** is "Silsilat al-Ahadith as-Sahihah", respond:
+   Grade: Sahih  
+5) If **${collection}** is "Silsilat al-Ahadith ad-Da'ifah", respond:
+   Grade: Da'if  
+6) For other Sunan/Musnad/Muwatta books, only use their explicit Hasan/Da'if gradings. If none, "No grading available."  
+7) NEVER invent chains, book titles, or scholars.
 
-**Your reply must use exactly these labels:**
-Commentary: (Minimum three sentences, plain English explanation of the grading, reference, and its reliability.)
-Grade: (One word — Sahih, Hasan, Daif, Very Weak, Fabricated, or No grading available)
-Evaluation: (Cite the specific source and reasoning. If not found, state clearly which sources were checked.)
+Output format (exactly these labels):
+Commentary: (3+ sentences, plain English)  
+Grade: (one word: Sahih, Hasan, Da‘īf, Very Weak, Fabricated, or No grading available)  
+Evaluation: (cite **${collection}** and why)
 
-Hadith Reference: ${reference || "unknown"}
+`
+    },
+    {
+      role: "user",
+      content: `
+Hadith Reference: ${reference}
 Hadith Text: ${snippet}
-`;
+`
+    }
+  ];
+
   try {
-    const ai = await axios.post(
+    const aiResp = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "openai/gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 400
+        model:       "openai/gpt-4o-mini",
+        messages,
+        temperature: 0.0,
+        max_tokens:  400
       },
       {
         headers: {
@@ -291,25 +304,14 @@ Hadith Text: ${snippet}
       }
     );
 
-    let reply = "No commentary received.";
-    if (
-      ai.data &&
-      Array.isArray(ai.data.choices) &&
-      ai.data.choices[0] &&
-      ai.data.choices[0].message &&
-      typeof ai.data.choices[0].message.content === "string"
-    ) {
-      reply = ai.data.choices[0].message.content.trim();
-    }
+    const commentary = aiResp.data.choices[0]?.message?.content?.trim() 
+      || "No commentary received.";
 
-    commentaryCache[cacheKey] = reply;
-    return res.json({ commentary: reply });
+    commentaryCache[cacheKey] = commentary;
+    return res.json({ commentary });
 
   } catch (error) {
-    const errInfo = error.response && error.response.data
-      ? error.response.data
-      : error.message;
-    console.error("❌ Commentary error:", errInfo);
+    console.error("❌ Commentary error:", error.response?.data || error.message);
     return res.status(500).json({ error: "Failed to fetch commentary." });
   }
 });
