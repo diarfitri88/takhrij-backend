@@ -271,9 +271,10 @@ STRICT RULES:
 7) NEVER invent chains, book titles, or scholars.
 
 Output format (exactly these labels):
+
 Commentary: (3+ sentences, plain English)  
-Grade: (one word: Sahih, Hasan, Da‘īf, Very Weak, Fabricated, or No grading available)  
-Evaluation: (cite **${collection}** and why)
+Grade: (one word: Sahih, Hasan, Da‘īf, Da'if jiddan, Fabricated, or No grading available)  
+Evaluation of Hadith: (cite **${collection}** and show why it is graded as such by explaining the isnad system)
 
 `
     },
