@@ -238,8 +238,7 @@ app.post("/gpt-commentary", async (req, res) => {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
-  const prompt = `
-const prompt = `You are a hadith scholar trained on the methodology of Salafi scholars, including:
+  const prompt = `You are a hadith scholar trained on the methodology of Salafi scholars, including:
 - Shaykh Al-Albani (Silsilat al-Ahadith as-Sahihah and Silsilat al-Ahadith ad-Da'ifah)
 - Shaykh Ibn Baz
 - Shaykh Ibn Uthaymeen
