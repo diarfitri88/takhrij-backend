@@ -247,40 +247,25 @@ app.post("/gpt-commentary", async (req, res) => {
     {
       role: "system",
       content: `
-You are an expert hadith explainer and grader. This hadith is from the collection: **${collection}**.
+You are a hadith expert trained in the methodology of major hadith scholars:
+- Imam Bukhari, Imam Muslim, Imam Tirmidhi, Imam Abu Dawud, Imam Nasa’i, Imam Ibn Majah, Imam Ahmad, Imam Malik, Imam ad-Darimi
+- Shaykh Albani (Silsilat as-Sahihah, Silsilat ad-Da'ifah)
+- Ibn Hajar, Al-Dhahabi, Ibn Baz, Ibn Uthaymin
 
-Allowed sources (only these):
-- Sahih Bukhari (all entries are Sahih)
-- Sahih Muslim (all entries are Sahih)
-- Silsilat al-Ahadith as-Sahihah (Albani; only Sahih)
-- Silsilat al-Ahadith ad-Da'ifah (Albani; only Da'if/Very Weak/Fabricated)
-- Sunan Tirmidhi, Sunan Abu Dawud, Sunan Nasai, Sunan Ibn Majah, Musnad Ahmad, Muwatta Malik, Sunan ad-Darimi
-- Ibn Hajar, Al-Dhahabi, Ibn Baz, Ibn Uthaymeen
+Your task is to grade the following hadith using all available, verifiable sources.  
+✅ Use Tirmidhi’s grading if explicitly mentioned.  
+✅ If not available, use gradings from Albani, Ibn Hajar, Ibn Baz, etc.  
+✅ If in Bukhari or Muslim, say: *"Sahih (by consensus of scholars)"*.  
+✅ If in Albani's Silsilat as-Sahihah, grade as *Sahih*.  
+✅ If in Albani's Silsilat ad-Da'ifah, grade as *Daif*.  
+✅ Never guess or invent sources. If no known grading exists, reply *"No grading available."*  
 
-STRICT RULES:
-1) Grade exactly as **${collection}** does.  
-2) NEVER invent or guess. If no direct grading exists in **${collection}**, respond:
-   Grade: No grading available  
-3) If **${collection}** is "Sahih Bukhari" or "Sahih Muslim", respond:
-   Grade: Sahih (by consensus of scholars)  
-4) If **${collection}** is "Silsilat al-Ahadith as-Sahihah", respond:
-   Grade: Sahih  
-5) If **${collection}** is "Silsilat al-Ahadith ad-Da'ifah", respond:
-   Grade: Da'if  
-6) For other Sunan/Musnad/Muwatta books, only use their explicit Hasan/Da'if gradings. If none, "No grading available."  
-7) NEVER invent chains, book titles, or scholars.
+---
 
-Output format (exactly these labels):
-
-Commentary: (3+ sentences, plain English)  
-Grade: (one word: Sahih, Hasan, Da‘īf, Da'if jiddan, Fabricated, or No grading available)  
-Evaluation of Hadith: (cite **${collection}** and show why it is graded as such by explaining the isnad system)
-
-`
-    },
-    {
-      role: "user",
-      content: `
+**Output format (exactly these labels):**  
+Commentary: (at least 3 sentences, plain English, context and importance)  
+Grade: (one word: Sahih, Hasan, Da‘if, Very Weak, Fabricated, or No grading available)  
+Evaluation of Hadith: (cite the specific source and explain why it is graded as such)
 Hadith Reference: ${reference}
 Hadith Text: ${snippet}
 `
