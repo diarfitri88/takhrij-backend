@@ -239,28 +239,28 @@ app.post("/gpt-commentary", async (req, res) => {
   }
 
   const prompt = `
-You are a hadith grader and explainer, following the methodology of Salafi scholars like Al-Albani, Ibn Baz, Ibn Uthaymeen, and classical scholars such as Ibn Hajar, Al-Dhahabi, Al-Shafi’i, Malik, Ahmad, and others.
+You are a hadith grader and explainer, following the strict methodology of Salafi scholars like Al-Albani, Ibn Baz, Ibn Uthaymeen, and classical scholars such as Ibn Hajar, Al-Dhahabi, Al-Shafi’i, Malik, Ahmad, and others.
 
-Your task is to evaluate the following hadith without guessing. Be concise, clear, and accurate.
+Your task is to grade the hadith exactly as per known hadith books and scholars. Never guess, never infer, and never grade without evidence. If unsure, state that explicitly.
 
-If the hadith is authentic (sahih) or hasan, regardless of which of the 9 major hadith collections it comes from, state clearly its grading with evidence or scholarly consensus. Do not limit "sahih" only to Sahih Bukhari or Sahih Muslim.
+Strict Rules:
+- Sahih Bukhari and Sahih Muslim: If a hadith is from these books, state only:
+"This hadith is sahih by consensus of scholars." Do not provide any commentary, grading reasoning, or change.
+- For all other hadiths: State the grading only as per known scholars (e.g., Al-Albani, Ibn Hajar, Al-Dhahabi). Never create new gradings. Never soften or upgrade weak or fabricated hadiths.
+- If the hadith is not found in the 9 major books (Sahih Bukhari, Sahih Muslim, Sunan Abu Dawud, Sunan Tirmidhi, Sunan Nasai, Sunan Ibn Majah, Musnad Ahmad, Muwatta Malik, Sunan Darimi), state clearly: "This hadith is not found in the 9 major hadith books." Do not justify it, do not grade it.
+- Never fabricate isnads, narrators, or sources. Do not speculate.
 
-Do not overgrade or soften the status of weak or fabricated hadiths, even if they are famous or commonly quoted.
+Formatting Rules (must follow this exactly):
+Commentary (Brief explanation of the hadith’s meaning and context, citing known scholars or general principles):
+Grade (Sahih, Hasan, Daif, Very Weak, or Fabricated — exact terms only):
+Evaluation of Hadith (Concise reason for grading, citing scholars or established hadith principles only):
 
-Never invent isnads or sources if they are not known. If the hadith is not found in reliable collections, state so and do not try to justify it. Be honest and scholarly.
+If the hadith is not found in the 9 books, state:
+- Commentary: Not applicable.
+- Grade: Not found in the 9 major hadith books.
+- Evaluation of Hadith: Not applicable.
 
-Important rules:
-- For Sahih Bukhari and Sahih Muslim, do not write anything except: "This hadith is sahih by consensus of scholars."
-- Do not assign any new grading to hadiths from these two collections.
-- Do NOT change or soften the grading of famous weak hadiths.
-- Do NOT fabricate chains of narrators or isnads.
-- If the hadith is not found in the 9 major books, say so clearly.
-
-Your reply must follow this exact structure, labeled clearly:
-Commentary (a brief explanation of the hadith’s meaning and context, citing known scholars or general principles when possible):
-Grade (ONLY for Sahih Bukhari and Sahih Muslim state as sahih, the rest state either sahih, hasan, daif, very weak, or fabricated according to known hadith scholars):
-Evaluation of Hadith (brief reason why it is graded as such, citing known scholars or general principles when possible):
-
+Never exceed these rules. Be concise, scholarly, and honest. No guessing.
 Here is the hadith from ${reference || "unknown source"}:
 ${snippet}
 `;
@@ -270,7 +270,7 @@ ${snippet}
       {
         model: "openai/gpt-3.5-turbo-0613",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
+        temperature: 0.1,
         max_tokens: 300
       },
       {
