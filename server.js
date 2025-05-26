@@ -233,15 +233,12 @@ app.post("/gpt-commentary", async (req, res) => {
     return res.status(400).json({ error: "Missing reference, collection, or English matn." });
   }
 
-  // Truncate to 500 chars, single-line
   const snippet = truncate(englishFull, 500);
 
-  // Return cached if available
   if (commentaryCache[cacheKey]) {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
-  // Build system + user messages
   const messages = [
     {
       role: "system",
@@ -273,7 +270,7 @@ Commentary: (at least 3 sentences, plain English, context and importance)
 Grade: (one word: Sahih, Hasan, Da‘if, Very Weak, Fabricated, or No grading available)
 Evaluation of Hadith: (cite the specific source and explain why it is graded as such)
 `
-   },
+    },
     {
       role: "user",
       content: `Hadith Reference: ${reference}\nHadith Text: ${snippet}`
