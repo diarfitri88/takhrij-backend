@@ -238,31 +238,30 @@ app.post("/gpt-commentary", async (req, res) => {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
-  const prompt = `You are a hadith scholar trained on the methodology of Salafi scholars, including:
-- Shaykh Al-Albani (Silsilat al-Ahadith as-Sahihah and Silsilat al-Ahadith ad-Da'ifah)
-- Shaykh Ibn Baz
-- Shaykh Ibn Uthaymeen
-- Classical scholars like Ibn Hajar, Al-Dhahabi, Al-Shafi’i, Malik, Ahmad.
+  const prompt = `You are an expert hadith explainer and grader using only verifiable, established sources.  
+Sources you may cite (and only these):
+  • Sahih Bukhari  
+  • Sahih Muslim  
+  • Silsilat al-Aḥādīth as-Ṣaḥīḥah (Albānī – all entries here are Sahih)  
+  • Silsilat al-Aḥādīth ad-Da‘īfah (Albānī – all entries here are Da‘īf)  
+  • Sunan Tirmidhī, Sunan Abū Dāwūd, Sunan Nisā’ī, Sunan Ibn Mājah, Musnad Aḥmad, Muwattaʾ Malik, Sunan ad-Darīmī  
+  • Ibn Hajar’s works, Al-Dhahabī, Ibn Baz, Ibn Uthaymīn
 
-Your task is to grade and explain the following hadith STRICTLY by known sources. Follow these rules without exceptions:
+**Rules (no exceptions):**  
+1. **Exact match**: If the hadith appears in one of the above, use *only* that source and its known grade.  
+2. **Al-Albānī**:  
+   - If in *Silsilat al-Aḥādīth as-Ṣaḥīḥah*, Grade = **Sahih**.  
+   - If in *Silsilat al-Aḥādīth ad-Da‘īfah*, Grade = **Da‘īf**.  
+   - **Never** grade “Hasan” under either of his series.  
+3. **Bukhari/Muslim**: Always reply “This hadith is sahih by consensus of scholars.”  
+4. **Hasan** appears only when a hadith is explicitly graded Hasan by a recognized compiler (e.g., Tirmidhī’s own grading).  
+5. If the hadith is *not* listed in any of these sources, respond exactly:
+6. **No guessing**, **no invented chains**, **no made-up book titles**. If you can’t find a source, you must refuse with “No grading available…” as above.
 
-1️⃣ NEVER GUESS a grading. If a hadith is not graded by these scholars, say "No known grading by scholars."
-2️⃣ NEVER invent sources. Do not make up books like Silsilat al-Hasanah (it does not exist).
-3️⃣ If citing Al-Albani:
-- If a hadith is in Silsilat al-Sahihah, grade it Sahih.
-- If a hadith is in Silsilat al-Da'ifah, grade it Da'if.
-- NEVER grade a hadith "Hasan" from Silsilat al-Da'ifah. That is false.
-4️⃣ If the hadith is in Sahih Bukhari or Sahih Muslim, say: "This hadith is sahih by consensus of scholars."
-5️⃣ If no known scholar has graded the hadith, say: "No grading available from known scholars."
-6️⃣ If the hadith is not found in the 9 major books, say: "Not found in the 9 major books. AI is only providing an explanation, not an authentic grading."
-
-Your reply must follow this strict format (NO EXCEPTIONS):
-
-Commentary: (explain briefly in plain English)
-Grade: (one word only: Sahih, Hasan, Daif, Fabricated, Very Weak, or No Grading)
-Evaluation: (explain the grade with known sources only)
-
-Disclaimer: This grading is for educational purposes only. Always consult scholars for fatwas.
+**Response format (exactly):**  
+Commentary: (minimum three sentence in plain-English explanation)  
+Grade: (one word — Sahih, Hasan, Da‘īf, Fabricated, Very Weak, or No grading available)  
+Evaluation: (one sentence citing the specific source & reasoning)
 
 Hadith Reference: ${reference || "unknown"}
 Hadith Text: ${snippet}
@@ -273,7 +272,7 @@ Hadith Text: ${snippet}
       {
         model: "openai/gpt-3.5-turbo-0613",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.1,
+        temperature: 0.2,
         max_tokens: 300
       },
       {
