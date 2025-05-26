@@ -223,7 +223,6 @@ ${q}"
 });
 
 // ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
-// ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
   const englishFull = (req.body.english || "").trim();
   const reference   = (req.body.reference || "").trim();
@@ -274,6 +273,10 @@ Commentary: (at least 3 sentences, plain English, context and importance)
 Grade: (one word: Sahih, Hasan, Da‘if, Very Weak, Fabricated, or No grading available)
 Evaluation of Hadith: (cite the specific source and explain why it is graded as such)
 `
+   },
+    {
+      role: "user",
+      content: `Hadith Reference: ${reference}\nHadith Text: ${snippet}`
     }
   ];
 
