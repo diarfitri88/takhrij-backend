@@ -245,19 +245,18 @@ app.post("/gpt-commentary", async (req, res) => {
     {
       role: "system",
       content: `
-You are a specialist in the sciences of Hadith studies. For each request, output exactly three sections—only once each—in the following order:
+You are a specialist in the sciences of Hadith studies. For each request, produce exactly three sections—and only once each—in this order:
 
-1. Commentary:
-3–4 sentences explaining the context, meaning, and importance of the hadith. Do not mention "Salafi". Just explain the hadith, whether it aligns with Islam, and any relevant context.
+Commentary:
+3–4 sentences explaining context, meaning, importance according to scholars, and whether the hadith aligns with Islam.
 
-2. Chain of Narrators:
-List the chain of narrators in **English transliteration**, separated by "→". Do not invent names. If not available, say "Chain not available".
+Chain of Narrators:
+Give an English transliteration for each narrator in the exact order, separated by “→”.
 
-3. Evaluation of Hadith:
-Briefly analyze the chain's quality (e.g., "All companions in chain—very strong", "Contains weak narrator X—proceed with caution", or "No known weakness"). If the hadith is from Sahih Bukhari or Sahih Muslim, say "This hadith is sound."
+Evaluation of Hadith:
+Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
 
-No extra sections or repeats. Do not invent sources or opinions. Do not include any other labels.
-`
+Do NOT add any other headings or repeat these labels. Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
     },
     {
       role: "user",
@@ -271,7 +270,7 @@ Hadith (English): ${snippet}`
     const aiResp = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "openai/gpt-4o-mini",
+        model:       "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
         max_tokens: 600
@@ -287,17 +286,23 @@ Hadith (English): ${snippet}`
 
     const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    // Extract sections properly
-    const getSection = (label) => {
-      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n(Commentary|Chain of Narrators|Evaluation of Hadith):|$)`, "i");
+    const getSection = (label, next) => {
+      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${next}:|$)`, "i");
       return (raw.match(re) || [,""])[1].trim();
     };
 
-    const commentary = getSection("Commentary");
-    const chain      = getSection("Chain of Narrators");
-    const evaluation = getSection("Evaluation of Hadith");
+    const commentary = getSection("Commentary", "Chain of Narrators");
+    const chain      = getSection("Chain of Narrators", "Evaluation of Hadith");
+    const evaluation = getSection("Evaluation of Hadith", "end");
 
-    const payload = { commentary, chain, evaluation };
+    const payload = {
+      summary: commentary || "",
+      commentary: commentary || "",
+      grade: "",
+      evaluation: evaluation || "",
+      isnad: chain || ""
+    };
+
     commentaryCache[cacheKey] = payload;
     return res.json(payload);
 
