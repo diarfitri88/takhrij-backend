@@ -238,24 +238,24 @@ app.post("/gpt-commentary", async (req, res) => {
   const snippet = truncate(englishFull, 500);
 
   if (commentaryCache[cacheKey]) {
-    return res.json(commentaryCache[cacheKey]);
+    return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
   const messages = [
     {
       role: "system",
-      content: `You are a specialist in the sciences of Hadith studies. For each request, produce exactly three sections—and only once each—in this order:
+      content: `You are a specialist in the sciences of Hadith studies. Produce exactly three sections—only once each—in this order:
 
 Commentary:
 3–4 sentences explaining context, meaning, importance according to scholars, and whether the hadith aligns with Islam.
 
 Chain of Narrators:
-Give an English transliteration for each narrator in the exact order, separated by “→”.
+English transliteration for each narrator in order, separated by “→”.
 
 Evaluation of Hadith:
-Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
+Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” “No known weakness”).
 
-Do NOT add any other headings or repeat these labels. Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
+Do NOT add extra headings or repeat labels. Do NOT grade Sahih/Da‘if, nor invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
     },
     {
       role: "user",
@@ -283,29 +283,35 @@ Hadith (English): ${snippet}`
       }
     );
 
-    let raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
+    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    // Extract sections
-    const getSection = (label, next) => {
-      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${next}:|$)`, "i");
-      return (raw.match(re) || [,""])[1].trim();
+    // helper to pull out each block
+    const section = (label, nextLabel) => {
+      if (nextLabel) {
+        const m = raw.match(new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${nextLabel}:)`, "i"));
+        return (m && m[1].trim()) || "";
+      } else {
+        const m = raw.match(new RegExp(`${label}:\\s*([\\s\\S]*)`, "i"));
+        return (m && m[1].trim()) || "";
+      }
     };
 
-    const commentary = getSection("Commentary", "Chain of Narrators");
-    const isnad      = getSection("Chain of Narrators", "Evaluation of Hadith");
-    const evaluation = getSection("Evaluation of Hadith", "end");
+    const commentary = section("Commentary", "Chain of Narrators");
+    const isnad      = section("Chain of Narrators", "Evaluation of Hadith");
+    const evaluation = section("Evaluation of Hadith", null);
 
-    const payload = {
-      commentary: commentary || "",
-      evaluation: evaluation || "",
-      isnad:      isnad      || ""
-    };
+    // stitch them back into one big string for your front-end parser
+    const fullCommentary = [
+      `Commentary: ${commentary}`,
+      `Chain of Narrators: ${isnad}`,
+      `Evaluation of Hadith: ${evaluation}`
+    ].join("\n\n");
 
-    commentaryCache[cacheKey] = payload;
-    return res.json(payload);
+    commentaryCache[cacheKey] = fullCommentary;
+    return res.json({ commentary: fullCommentary });
 
-  } catch (error) {
-    console.error("❌ Commentary error:", error.response?.data || error.message);
+  } catch (err) {
+    console.error("❌ Commentary error:", err.response?.data || err.message);
     return res.status(500).json({ error: "Failed to fetch commentary." });
   }
 });
