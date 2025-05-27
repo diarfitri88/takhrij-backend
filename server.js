@@ -223,12 +223,12 @@ ${q}"
   }
 });
 
-// ─── 8) COMMENTARY ENDPOINT (refined) ──────────────────────────────────────────
+// ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
-  const englishFull = (req.body.english || "").trim();
+  const englishFull = (req.body.english  || "").trim();
   const arabicFull  = (req.body.arabic   || "").trim();
-  const reference   = (req.body.reference || "").trim();
-  const collection  = (req.body.collection || "").trim();
+  const reference   = (req.body.reference|| "").trim();
+  const collection  = (req.body.collection|| "").trim();
   const cacheKey    = `${reference}|${collection}`;
 
   if (!englishFull || !arabicFull || !reference || !collection) {
@@ -237,7 +237,6 @@ app.post("/gpt-commentary", async (req, res) => {
       .json({ error: "Missing Arabic, English, reference, or collection." });
   }
 
-  // Return from cache if present
   if (commentaryCache[cacheKey]) {
     return res.json(commentaryCache[cacheKey]);
   }
@@ -247,13 +246,18 @@ app.post("/gpt-commentary", async (req, res) => {
     {
       role: "system",
       content: `
-You are a specialist in Hadith studies.  Output exactly three sections—no more, no less—each exactly once, in this order:
+You are a specialist in Hadith studies. Output exactly three sections—and only once each—**in this order**:
 
-Commentary: 3–4 sentences explaining context, meaning & importance.
-Chain of Narrators: English transliteration of each narrator in order, separated by “→”.
-Evaluation of Hadith: Brief analysis of the chain’s strength or weakness.
+Commentary:
+3–4 sentences explaining context, meaning, and importance.
 
-Do NOT add any extra headings or repeat these labels.`
+Chain of Narrators:
+English transliteration of each narrator, in order, separated by “→”.
+
+Evaluation of Hadith:
+Brief analysis of the chain’s strength or weakness.
+
+**Do NOT** add any other headings or repeat labels.`
     },
     {
       role: "user",
@@ -270,37 +274,35 @@ Hadith (English): ${snippet}`
         model:       "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
-        max_tokens: 600,
+        max_tokens: 600
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
-          "X-Title": "Takhrij Commentary",
+          "X-Title": "Takhrij Commentary"
         }
       }
     );
 
-    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
+    const raw = aiResp.data.choices[0]?.message?.content || "";
 
-    // Split on the three labels:
-    const afterCommentary = raw.split("Commentary:")[1] || "";
-    const commentaryText  = (afterCommentary.split("Chain of Narrators:")[0] || "").trim();
+    // Case-insensitive regex to pull each section:
+    const commentaryMatch = raw.match(
+      /Commentary:\s*([\s\S]*?)(?=Chain of Narrators:)/i
+    );
+    const chainMatch = raw.match(
+      /Chain of Narrators:\s*([\s\S]*?)(?=Evaluation of Hadith:)/i
+    );
+    const evalMatch = raw.match(
+      /Evaluation of Hadith:\s*([\s\S]*)$/i
+    );
 
-    const afterChain = raw.split("Chain of Narrators:")[1] || "";
-    const chainText  = (afterChain.split("Evaluation of Hadith:")[0] || "").trim();
+    const commentary = commentaryMatch ? commentaryMatch[1].trim() : "";
+    const chain      = chainMatch      ? chainMatch[1].trim()      : "";
+    const evaluation = evalMatch       ? evalMatch[1].trim()       : "";
 
-    const afterEval = raw.split("Evaluation of Hadith:")[1] || "";
-    const evalText  = afterEval.trim();
-
-    // Build the JSON we return
-    const payload = {
-      commentary: commentaryText,
-      chain:      chainText,
-      evaluation: evalText
-    };
-
-    // Cache and send
+    const payload = { commentary, chain, evaluation };
     commentaryCache[cacheKey] = payload;
     return res.json(payload);
 
