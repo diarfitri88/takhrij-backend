@@ -251,7 +251,7 @@ app.post("/gpt-commentary", async (req, res) => {
 Commentary:
 3–4 sentences explaining context, meaning, importance (no grading labels).
 
-Chain of Narrators:
+Chain of narrators:
 English transliteration for each name in order, separated by “→”.
 
 Evaluation of Hadith:
@@ -287,23 +287,21 @@ Hadith (English): ${snippet}`
 
     const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    // pull out sections by split (more robust than fancy regex)
+    // split out each section
     const afterCommentary = raw.split("Commentary:")[1] || "";
-    const commentaryText  = (afterCommentary.split("Chain of Narrators:")[0] || "").trim();
+    const commentaryText  = (afterCommentary.split("Chain of narrators:")[0] || "").trim();
 
-    const afterChain = raw.split("Chain of Narrators:")[1] || "";
+    const afterChain = raw.split("Chain of narrators:")[1] || "";
     const chainText  = (afterChain.split("Evaluation of Hadith:")[0] || "").trim();
 
     const afterEval = raw.split("Evaluation of Hadith:")[1] || "";
-    const evalText  = afterEval.trim();
+    const evaluationText = afterEval.trim();
 
-    // **Rebuild a single string** with all five labels your front-end expects:
+    // build a single string with exactly THREE labels
     const fullCommentary = [
-      `Summary: ${commentaryText}`,                  // front-end will pick this up as summary
-      `Commentary: ${commentaryText}`,               // and as commentary
-      `Grade:`,                                      // empty grade
-      `Evaluation of Hadith: ${evalText}`,           // the real evaluation
-      `Chain of narrators: ${chainText}`             // and the chain
+      `Commentary: ${commentaryText}`,
+      `Chain of narrators: ${chainText}`,
+      `Evaluation of Hadith: ${evaluationText}`
     ].join("\n\n");
 
     commentaryCache[cacheKey] = fullCommentary;
