@@ -249,21 +249,24 @@ app.post("/gpt-commentary", async (req, res) => {
 
   const snippet = truncate(englishFull, 500);
 
-  // ─── Narrator Check ──────────────────────────────────────────────
-let narratorName = null;
+// ─── Narrator Check ──────────────────────────────────────────────
+let narratorInfo = null;
+
 narrators.forEach((n) => {
   if (!n.name) return;
+
   const normalizedName = n.name.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim();
   const normalizedHadith = englishFull.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim();
+
   if (normalizedHadith.includes(normalizedName)) {
-    narratorName = n.name;
+    narratorInfo = n;
   }
 });
 
 let narratorComment = "";
-if (narratorName) {
-  let narratorInfo = narrators.find(n => n.name === narratorName);
-  narratorComment = `Narrator Check: ${narratorInfo.name} is from ${narratorInfo.generation || "unknown generation"}.`;
+
+if (narratorInfo) {
+  narratorComment = `Narrator Check: ${narratorInfo.name} is from ${narratorInfo.grade || "unknown generation"}. Birth: ${narratorInfo.birth_date_hijri || "unknown"}, Death: ${narratorInfo.death_date_hijri || "unknown"}. Reliability: ${narratorInfo.reliability_grade || "unknown"}.`;
 } else {
   narratorComment = "Narrator Check: No information found for this narrator.";
 }
