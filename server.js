@@ -235,7 +235,6 @@ app.post("/gpt-commentary", async (req, res) => {
     return res.status(400).json({ error: "Missing Arabic, English, reference, or collection." });
   }
 
-  // Shorten the English to avoid huge payloads
   const snippet = truncate(englishFull, 500);
 
   if (commentaryCache[cacheKey]) {
@@ -246,19 +245,23 @@ app.post("/gpt-commentary", async (req, res) => {
     {
       role: "system",
       content: `
-You are a specialist in Hadith studies. For each request, you will output:
+You are a specialist in Hadith studies. For each request, output:
 
-1. Commentary: 3–4 sentences explaining context, meaning, and importance citing salafi scholars, but DO NOT mention salafi.
+1. Commentary: 3–4 sentences explaining context, meaning, and importance.
 2. Evaluation: Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
-3. Chain of Narrators: List the narrators exactly as given in the Arabic text.
+3. Chain of Narrators:
+   a) Give an **English transliteration** for each name, in the same order.
 
 Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. Simply explain and list.
 
 Your response must follow this exact format:
 
-Commentary: <…>  
-Evaluation: <…>  
-Chain of Narrators: <narrator1> → <narrator2> → …  
+Commentary: 
+<…>  
+Evaluation of Hadith: 
+<…>  
+Chain of Narrators (Transliteration): 
+narrator1 → narrator2 → …
 `
     },
     {
@@ -276,7 +279,7 @@ Hadith (English): ${snippet}`
         model:       "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
-        max_tokens:  500
+        max_tokens:  600
       },
       {
         headers: {
@@ -298,6 +301,7 @@ Hadith (English): ${snippet}`
     return res.status(500).json({ error: "Failed to fetch commentary." });
   }
 });
+
 
 // ─── 9) START SERVER ───────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
