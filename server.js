@@ -239,15 +239,14 @@ app.post('/gpt-commentary', async (req, res) => {
     return res.json(commentaryCache[cacheKey]);
   }
 
-  // Truncate English to avoid long prompts
   const snippet = truncate(englishFull, 500);
-
   const systemPrompt =
     `You are a specialist in Hadith studies.\n` +
     `Output exactly these three sections in order and nothing else:\n` +
     `Commentary: 3–4 sentences explaining context, meaning, and importance.\n` +
     `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
-    `Evaluation of Hadith: brief note on chain strength or weakness, except override for Sahih Bukhari/Muslim.`;
+    `Evaluation of Hadith: brief note on chain strength or weakness.`;  // no override here
+
   const userPrompt =
     `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
@@ -274,11 +273,13 @@ app.post('/gpt-commentary', async (req, res) => {
       }
     );
 
+    // strip code fences & trim
     let raw = aiResp.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/```[\s\S]*?```/g, '').replace(/```/g, '').trim();
+    raw = raw.replace(/```[\s\S]*?```/g, '').trim();
 
-    const commentaryMatch = raw.match(/Commentary:\s*([\s\S]*?)(?=\nChain of Narrators:)/i);
-    const chainMatch      = raw.match(/Chain of Narrators:\s*([\s\S]*?)(?=\nEvaluation of Hadith:)/i);
+    // robust, case-insensitive regex without anchoring to \n
+    const commentaryMatch = raw.match(/Commentary:\s*([\s\S]*?)(?=Chain of Narrators:)/i);
+    const chainMatch      = raw.match(/Chain of Narrators:\s*([\s\S]*?)(?=Evaluation of Hadith:)/i);
     const evalMatch       = raw.match(/Evaluation of Hadith:\s*([\s\S]*)/i);
 
     const payload = {
@@ -287,11 +288,7 @@ app.post('/gpt-commentary', async (req, res) => {
       evaluation: evalMatch       ? evalMatch[1].trim()       : ''
     };
 
-    // Override evaluation for Sahih Bukhari and Sahih Muslim
-    if (['bukhari', 'muslim'].includes(collection)) {
-      payload.evaluation = 'Chain is sound and reliable';
-    }
-
+    // cache + respond
     commentaryCache[cacheKey] = payload;
     return res.json(payload);
 
