@@ -252,7 +252,7 @@ app.post("/gpt-commentary", async (req, res) => {
   // ─── Narrator Check ──────────────────────────────────────────────
 let narratorName = null;
 narrators.forEach((n) => {
-  if (englishFull.includes(n.name)) {
+   if (n.name && englishFull.toLowerCase().includes(n.name.toLowerCase())) {
     narratorName = n.name;
   }
 });
