@@ -225,37 +225,35 @@ ${q}"
 
 // ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
-  const englishFull = (req.body.english || "").trim();
-  const arabicFull  = (req.body.arabic   || "").trim();
-  const reference   = (req.body.reference || "").trim();
-  const collection  = (req.body.collection || "").trim();
-  const cacheKey    = reference + "|" + collection;
+  const { english = "", arabic = "", reference = "", collection = "" } = req.body;
+  const englishFull = english.trim();
+  const arabicFull  = arabic.trim();
+  const cacheKey    = `${reference}|${collection}`;
 
   if (!englishFull || !arabicFull || !reference || !collection) {
     return res.status(400).json({ error: "Missing Arabic, English, reference, or collection." });
   }
 
-  const snippet = truncate(englishFull, 500);
-
   if (commentaryCache[cacheKey]) {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
+  const snippet = truncate(englishFull, 500);
   const messages = [
     {
       role: "system",
-      content: `You are a specialist in the sciences of Hadith studies. Produce exactly three sections—only once each—in this order:
+      content: `You are a specialist in Hadith studies. Output exactly three sections—only once each—in this order:
 
 Commentary:
-3–4 sentences explaining context, meaning, importance according to scholars, and whether the hadith aligns with Islam.
+3–4 sentences explaining context, meaning, importance (no grading labels).
 
 Chain of Narrators:
-English transliteration for each narrator in order, separated by “→”.
+English transliteration of each name in order, separated by “→”.
 
 Evaluation of Hadith:
-Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” “No known weakness”).
+Brief analysis of chain’s strength or weakness.
 
-Do NOT add extra headings or repeat labels. Do NOT grade Sahih/Da‘if, nor invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
+Do NOT add extra headings or repeat labels.`
     },
     {
       role: "user",
@@ -266,45 +264,29 @@ Hadith (English): ${snippet}`
   ];
 
   try {
-    const aiResp = await axios.post(
+    const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model:       "openai/gpt-4o-mini",
-        messages,
-        temperature: 0.0,
-        max_tokens: 600
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "X-Title": "Takhrij Commentary"
-        }
-      }
+      { model: "openai/gpt-4o-mini", messages, temperature: 0, max_tokens: 600 },
+      { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` } }
     );
 
-    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
+    const raw = ai.data.choices[0]?.message?.content || "";
 
-    // helper to pull out each block
-    const section = (label, nextLabel) => {
-      if (nextLabel) {
-        const m = raw.match(new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${nextLabel}:)`, "i"));
-        return (m && m[1].trim()) || "";
-      } else {
-        const m = raw.match(new RegExp(`${label}:\\s*([\\s\\S]*)`, "i"));
-        return (m && m[1].trim()) || "";
-      }
-    };
+    // Simple splits:
+    const afterCommentary   = raw.split("Commentary:")[1] || "";
+    const commentaryPart    = (afterCommentary.split("Chain of Narrators:")[0] || "").trim();
 
-    const commentary = section("Commentary", "Chain of Narrators");
-    const isnad      = section("Chain of Narrators", "Evaluation of Hadith");
-    const evaluation = section("Evaluation of Hadith", null);
+    const afterChain        = raw.split("Chain of Narrators:")[1] || "";
+    const chainPart         = (afterChain.split("Evaluation of Hadith:")[0] || "").trim();
 
-    // stitch them back into one big string for your front-end parser
+    const afterEvaluation   = raw.split("Evaluation of Hadith:")[1] || "";
+    const evaluationPart    = afterEvaluation.trim();
+
+    // Re-assemble for your front-end parser:
     const fullCommentary = [
-      `Commentary: ${commentary}`,
-      `Chain of Narrators: ${isnad}`,
-      `Evaluation of Hadith: ${evaluation}`
+      `Commentary: ${commentaryPart}`,
+      `Chain of Narrators: ${chainPart}`,
+      `Evaluation of Hadith: ${evaluationPart}`
     ].join("\n\n");
 
     commentaryCache[cacheKey] = fullCommentary;
