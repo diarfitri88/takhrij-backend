@@ -235,6 +235,8 @@ app.post("/gpt-commentary", async (req, res) => {
     return res.status(400).json({ error: "Missing Arabic, English, reference, or collection." });
   }
 
+  const snippet = truncate(englishFull, 500);
+
   if (commentaryCache[cacheKey]) {
     return res.json(commentaryCache[cacheKey]);
   }
@@ -242,8 +244,7 @@ app.post("/gpt-commentary", async (req, res) => {
   const messages = [
     {
       role: "system",
-      content: `
-You are a specialist in the sciences of Hadith studies. For each request, produce exactly three sections—in this order—and only once each:
+      content: `You are a specialist in the sciences of Hadith studies. For each request, produce exactly three sections—and only once each—in this order:
 
 Commentary:
 3–4 sentences explaining context, meaning, importance according to scholars, and whether the hadith aligns with Islam.
@@ -254,13 +255,13 @@ Give an English transliteration for each narrator in the exact order, separated 
 Evaluation of Hadith:
 Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
 
-Do NOT add extra headings, repeat labels, or include grading (Sahih/Da‘if). For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
+Do NOT add any other headings or repeat these labels. Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
     },
     {
       role: "user",
       content: `Hadith Reference: ${reference}
 Hadith (Arabic): ${arabicFull}
-Hadith (English): ${englishFull}`
+Hadith (English): ${snippet}`
     }
   ];
 
@@ -268,7 +269,7 @@ Hadith (English): ${englishFull}`
     const aiResp = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "openai/gpt-4o-mini",
+        model:       "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
         max_tokens: 600
@@ -282,27 +283,22 @@ Hadith (English): ${englishFull}`
       }
     );
 
-    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
+    let raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    // Fallback in case raw response is not as expected
-    if (!raw.includes("Commentary:")) {
-      throw new Error("Invalid AI response format");
-    }
-
-    const getSection = (label, fallback = "") => {
-      const match = raw.match(new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n\\w+:|$)`, "i"));
-      return match ? match[1].trim() : fallback;
+    // Extract sections
+    const getSection = (label, next) => {
+      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${next}:|$)`, "i");
+      return (raw.match(re) || [,""])[1].trim();
     };
 
-    const commentary = getSection("Commentary");
-    const isnad      = getSection("Chain of Narrators");
-    const evaluation = getSection("Evaluation of Hadith");
+    const commentary = getSection("Commentary", "Chain of Narrators");
+    const isnad      = getSection("Chain of Narrators", "Evaluation of Hadith");
+    const evaluation = getSection("Evaluation of Hadith", "end");
 
     const payload = {
-      summary: commentary,
-      commentary: commentary,
-      evaluation,
-      isnad
+      commentary: commentary || "",
+      evaluation: evaluation || "",
+      isnad:      isnad      || ""
     };
 
     commentaryCache[cacheKey] = payload;
