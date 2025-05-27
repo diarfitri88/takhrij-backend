@@ -280,7 +280,7 @@ if (narratorMatches.length) {
   if (narratorMatches.every(n => (n.reliability_grade || "").toLowerCase().includes("thiqa"))) {
     hadithGrade = "Sahih";
   } else if (narratorMatches.some(n => (n.reliability_grade || "").toLowerCase().includes("weak") || (n.reliability_grade || "").toLowerCase().includes("unknown"))) {
-    hadithGrade = "Da'if";
+    hadithGrade = "Da'if (due to some narrators being unknown or weak)";
   } else {
     hadithGrade = "Hasan";
   }
@@ -294,42 +294,42 @@ if (narratorMatches.length) {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
-  const messages = [
-    {
-      role: "system",
-      content: `
-You are a hadith scholar trained in the methodology of major hadith scholars, including:
-- Imam Bukhari, Imam Muslim, Imam Tirmidhi, Imam Abu Dawud, Imam Nasa’i, Imam Ibn Majah, Imam Ahmad, Imam Malik, Imam ad-Darimi
-- Shaykh Al-Albani (Silsilat as-Sahihah, Silsilat ad-Da'ifah)
-- Ibn Hajar, Al-Dhahabi, Ibn Baz, Ibn Uthaymin, Ibn Taymiyyah
+ const messages = [
+  {
+    role: "system",
+    content: `
+You are an expert hadith grader following the methodology of Salafi scholars, including:
+- Shaykh Albani (Silsilat as-Sahihah, Silsilat ad-Da'ifah)
+- Ibn Hajar, Al-Dhahabi, Ibn Baz, Ibn Uthaymin
 
-Your task is to grade the following hadith using all known sources and scholarly understanding.
-Follow these rules:
+Your task is to evaluate the following hadith based on authentic sources. Follow these rules strictly:
 
-✅ If the hadith is in Sahih Bukhari or Sahih Muslim, say:
-   Grade: Sahih (by consensus of scholars)
+✅ If the hadith is found in Sahih Bukhari or Sahih Muslim, say:
+   Grade: Sahih (by consensus of scholars).
 
-✅ If the hadith is in Jami\` at-Tirmidhi, use Tirmidhi’s explicit grading. If Tirmidhi says hasan, sahih, gharib, or hasan sahih, use it. If no grading is given, say:
-   Grade: No explicit grading available by Imam Tirmidhi. However, based on other sources: [grading].
+✅ If the hadith is in Jami' at-Tirmidhi, and Tirmidhi graded it (hasan, sahih, gharib, etc.), use that grading. If no grading, reply:
+   Grade: No explicit grading available by Tirmidhi. Consult other sources.
 
-✅ If the hadith is in Albani’s Silsilat as-Sahihah, grade as Sahih
-✅ If the hadith is in Albani’s Silsilat ad-Da’ifah, grade as Da‘if
-✅ For other books (Abu Dawud, Nasa’i, Ibn Majah, Ahmad, Malik, Darimi), grade using Al-Albani, Ibn Hajar, Al-Dhahabi, Ibn Baz, or Ibn Uthaymin if available. If not, use your knowledge from trusted scholars.
-✅ If grading is not available, reply:
-   Grade: No grading available based on known sources. Please verify with scholars.
-✅ Never fabricate chains, scholars, or sources.
+✅ If the hadith is graded by Albani, state his grading (Sahih, Hasan, Da'if, etc.).
 
-Output format (exactly these labels):
-Commentary: (at least 3 sentences, plain English, context and importance)
-Grade: (one word: Sahih, Hasan, Da‘if, Very Weak, Fabricated, or No grading available)
-Evaluation of Hadith: (summarize isnad, key narrator strengths/weaknesses, and reason for grading)
+✅ If grading is not available in these sources, say:
+   Grade: No grading available from known Salafi sources. Verify with scholars.
+
+❌ Never invent chains of narration or scholar opinions. Avoid speculative guesses.
+
+Your output must follow this format exactly:
+Commentary: (at least 3 sentences, plain English, context, and importance)
+Grade: (one word: Sahih, Hasan, Da'if, Very Weak, Fabricated, or No grading available)
+Evaluation: (summarize the source and reasoning; if no grading, state clearly why)
+
+Be concise, clear, and factual.
 `
-    },
-    {
-      role: "user",
-      content: `Hadith Reference: ${reference}\nHadith (Arabic): ${req.body.arabic}\nHadith (English): ${snippet}`
-    }
-  ];
+  },
+  {
+    role: "user",
+    content: `Hadith Reference: ${reference}\nHadith (Arabic): ${req.body.arabic}\nHadith (English): ${snippet}`
+  }
+];
 
   try {
     const aiResp = await axios.post(
