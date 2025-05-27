@@ -225,15 +225,13 @@ ${q}"
 
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
 app.post('/gpt-commentary', async (req, res) => {
-  const englishFull = (req.body.english  || '').trim();
-  const arabicFull  = (req.body.arabic   || '').trim();
-  const reference   = (req.body.reference|| '').trim();
-  const collection  = (req.body.collection|| '').trim().toLowerCase();
+  const englishFull = (req.body.english || '').trim();
+  const arabicFull  = (req.body.arabic  || '').trim();
+  const reference   = (req.body.reference || '').trim();
+  const collection  = (req.body.collection || '').trim().toLowerCase();
 
   if (!englishFull || !arabicFull || !reference || !collection) {
-    return res
-      .status(400)
-      .json({ error: 'Missing english, arabic, reference, or collection.' });
+    return res.status(400).json({ error: 'Missing english, arabic, reference, or collection.' });
   }
 
   const cacheKey = `${reference}|${collection}`;
@@ -241,15 +239,17 @@ app.post('/gpt-commentary', async (req, res) => {
     return res.json(commentaryCache[cacheKey]);
   }
 
-  // Truncate English input to avoid exceeding prompt length
+  // Truncate English to avoid long prompts
   const snippet = truncate(englishFull, 500);
 
-  const systemPrompt = `You are a specialist in Hadith studies.\n` +
+  const systemPrompt =
+    `You are a specialist in Hadith studies.\n` +
     `Output exactly these three sections in order and nothing else:\n` +
     `Commentary: 3–4 sentences explaining context, meaning, and importance.\n` +
     `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
     `Evaluation of Hadith: brief note on chain strength or weakness, except override for Sahih Bukhari/Muslim.`;
-  const userPrompt = `Reference: ${reference}\n` +
+  const userPrompt =
+    `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
     `Hadith (Arabic): ${arabicFull}\n` +
     `Hadith (English): ${snippet}`;
@@ -258,13 +258,13 @@ app.post('/gpt-commentary', async (req, res) => {
     const aiResp = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model:       'openai/gpt-4o-mini',
+        model: 'openai/gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: userPrompt }
         ],
         temperature: 0.0,
-        max_tokens:  600
+        max_tokens: 600
       },
       {
         headers: {
