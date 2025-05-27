@@ -249,26 +249,45 @@ app.post("/gpt-commentary", async (req, res) => {
 
   const snippet = truncate(englishFull, 500);
 
-// ─── Narrator Check ──────────────────────────────────────────────
-let narratorInfo = null;
+// Helper function to extract names from Arabic matn
+function extractArabicNames(arabicText) {
+  if (!arabicText) return [];
+  const matches = arabicText.match(/عن\s([^\s،]+)/g);
+  if (!matches) return [];
+  return matches.map(m => m.replace("عن ", "").trim());
+}
 
-narrators.forEach((n) => {
-  if (!n.name) return;
+let narratorMatches = [];
+const arabicNames = extractArabicNames(req.body.arabic);
 
-  const normalizedName = n.name.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim();
-  const normalizedHadith = englishFull.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim();
-
-  if (normalizedHadith.includes(normalizedName)) {
-    narratorInfo = n;
-  }
+arabicNames.forEach((name) => {
+  const normalizedName = name.toLowerCase().replace(/ابن|بن|ب\./g, "").replace(/\s+/g, " ").trim();
+  const match = narrators.find(n => 
+    n.name && n.name.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim().includes(normalizedName)
+  );
+  if (match) narratorMatches.push(match);
 });
 
 let narratorComment = "";
+let hadithGrade = "Unknown";
 
-if (narratorInfo) {
-  narratorComment = `Narrator Check: ${narratorInfo.name} is from ${narratorInfo.grade || "unknown generation"}. Birth: ${narratorInfo.birth_date_hijri || "unknown"}, Death: ${narratorInfo.death_date_hijri || "unknown"}. Reliability: ${narratorInfo.reliability_grade || "unknown"}.`;
+if (narratorMatches.length) {
+  narratorComment = narratorMatches.map(n => {
+    return `Narrator: ${n.name} | Generation: ${n.grade || "unknown"} | Birth: ${n.birth_date_hijri || "unknown"} | Death: ${n.death_date_hijri || "unknown"} | Reliability: ${n.reliability_grade || "unknown"}`;
+  }).join("\n");
+
+  // Estimate Hadith Grade
+  if (narratorMatches.every(n => (n.reliability_grade || "").toLowerCase().includes("thiqa"))) {
+    hadithGrade = "Sahih";
+  } else if (narratorMatches.some(n => (n.reliability_grade || "").toLowerCase().includes("weak") || (n.reliability_grade || "").toLowerCase().includes("unknown"))) {
+    hadithGrade = "Da'if";
+  } else {
+    hadithGrade = "Hasan";
+  }
+
+  narratorComment = `Estimated Hadith Grade: ${hadithGrade}\n` + narratorComment;
 } else {
-  narratorComment = "Narrator Check: No information found for this narrator.";
+  narratorComment = "Narrator Check: No information found for this hadith.";
 }
 
   if (commentaryCache[cacheKey]) {
@@ -337,8 +356,6 @@ Evaluation of Hadith: (summarize isnad, key narrator strengths/weaknesses, and r
 
     commentaryCache[cacheKey] = finalCommentary;
 return res.json({ commentary: finalCommentary });
-    commentaryCache[cacheKey] = commentary;
-    return res.json({ commentary });
 
   } catch (error) {
     console.error("❌ Commentary error:", error.response?.data || error.message);
