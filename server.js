@@ -286,14 +286,16 @@ Hadith (English): ${snippet}`
 
     const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    const getSection = (label, next) => {
-      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${next}:|$)`, "i");
-      return (raw.match(re) || [,""])[1].trim();
-    };
+    const getSection = (label, next = null) => {
+  const re = next
+    ? new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${next}:|$)`, "i")
+    : new RegExp(`${label}:\\s*([\\s\\S]*)`, "i");
+  return (raw.match(re) || [,""])[1].trim();
+};
 
-    const commentary = getSection("Commentary", "Chain of Narrators");
-    const chain      = getSection("Chain of Narrators", "Evaluation of Hadith");
-    const evaluation = getSection("Evaluation of Hadith", "end");
+const commentary = getSection("Commentary", "Chain of Narrators");
+const chain      = getSection("Chain of Narrators", "Evaluation of Hadith");
+const evaluation = getSection("Evaluation of Hadith");
 
     const payload = {
       summary: commentary || "",
