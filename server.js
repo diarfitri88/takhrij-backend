@@ -267,12 +267,12 @@ Follow these rules:
 Output format (exactly these labels):
 Commentary: (at least 3 sentences, plain English, context and importance)
 Grade: (one word: Sahih, Hasan, Da‘if, Very Weak, Fabricated, or No grading available)
-Evaluation of Hadith: (cite source if known, explain why no grading is available and list the chain of narrators if available and say who is weak)
+Evaluation of Hadith: (summarize isnad, key narrator strengths/weaknesses, and reason for grading)
 `
     },
     {
       role: "user",
-      content: `Hadith Reference: ${reference}\nHadith Text: ${snippet}`
+      content: `Hadith Reference: ${reference}\nHadith (Arabic): ${req.body.arabic}\nHadith (English): ${snippet}`
     }
   ];
 
