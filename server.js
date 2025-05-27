@@ -223,7 +223,7 @@ ${q}"
   }
 });
 
-// ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
+// ─── 8) COMMENTARY ENDPOINT (refined) ──────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
   const englishFull = (req.body.english || "").trim();
   const arabicFull  = (req.body.arabic   || "").trim();
@@ -237,24 +237,23 @@ app.post("/gpt-commentary", async (req, res) => {
       .json({ error: "Missing Arabic, English, reference, or collection." });
   }
 
-  // quick cache check
+  // Return from cache if present
   if (commentaryCache[cacheKey]) {
     return res.json(commentaryCache[cacheKey]);
   }
 
   const snippet = truncate(englishFull, 500);
-
-  // build your GPT prompt
   const messages = [
     {
       role: "system",
-      content: `You are a specialist in Hadith studies. Output **exactly** three JSON fields—no more, no less—named "commentary", "chain", and "evaluation".
+      content: `
+You are a specialist in Hadith studies.  Output exactly three sections—no more, no less—each exactly once, in this order:
 
-- "commentary": 3–4 sentences explaining context, meaning, importance.
-- "chain":     English transliteration of each narrator in order, separated by “→”.
-- "evaluation": Brief analysis of the chain’s strength or weakness.
+Commentary: 3–4 sentences explaining context, meaning & importance.
+Chain of Narrators: English transliteration of each narrator in order, separated by “→”.
+Evaluation of Hadith: Brief analysis of the chain’s strength or weakness.
 
-Do **not** output anything else or wrap them in a single string.`
+Do NOT add any extra headings or repeat these labels.`
     },
     {
       role: "user",
@@ -271,37 +270,39 @@ Hadith (English): ${snippet}`
         model:       "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
-        max_tokens: 600
+        max_tokens: 600,
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
-          "X-Title": "Takhrij Commentary"
+          "X-Title": "Takhrij Commentary",
         }
       }
     );
 
-    const payload = aiResp.data.choices[0].message.content
-      .trim()
-      // guard: if it’s a JSON-like string, parse it
-      .replace(/```\s*/g, "")     // strip triple backticks, if any
-      ;
+    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    let data;
-    try {
-      data = JSON.parse(payload);
-    } catch {
-      // fallback: wrap everything in commentary
-      data = { 
-        commentary: payload, 
-        chain: "", 
-        evaluation: "" 
-      };
-    }
+    // Split on the three labels:
+    const afterCommentary = raw.split("Commentary:")[1] || "";
+    const commentaryText  = (afterCommentary.split("Chain of Narrators:")[0] || "").trim();
 
-    commentaryCache[cacheKey] = data;
-    return res.json(data);
+    const afterChain = raw.split("Chain of Narrators:")[1] || "";
+    const chainText  = (afterChain.split("Evaluation of Hadith:")[0] || "").trim();
+
+    const afterEval = raw.split("Evaluation of Hadith:")[1] || "";
+    const evalText  = afterEval.trim();
+
+    // Build the JSON we return
+    const payload = {
+      commentary: commentaryText,
+      chain:      chainText,
+      evaluation: evalText
+    };
+
+    // Cache and send
+    commentaryCache[cacheKey] = payload;
+    return res.json(payload);
 
   } catch (err) {
     console.error("❌ Commentary error:", err.response?.data || err.message);
