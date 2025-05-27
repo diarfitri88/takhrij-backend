@@ -238,26 +238,24 @@ app.post("/gpt-commentary", async (req, res) => {
   const snippet = truncate(englishFull, 500);
 
   if (commentaryCache[cacheKey]) {
-    return res.json({ commentary: commentaryCache[cacheKey] });
+    return res.json(commentaryCache[cacheKey]);
   }
 
   const messages = [
     {
       role: "system",
-      content: `
-You are a specialist in the sciences of Hadith studies. For each request, produce exactly three sections—**and only once each**—in this order:
+      content: `You are a specialist in the sciences of Hadith studies. For each request, produce exactly three sections—and only once each—in this order:
 
 Commentary:
-3–4 sentences explaining context, meaning, importance according to hadith scholars like ibn Baz, ibn Uthaymeen, Al-Albani and Ibn Taymiyyah.
-
-Evaluation of Hadith:
-Briefly analyze the chain’s quality (e.g., “All companions—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
+3–4 sentences explaining context, meaning, importance according to scholars, and whether the hadith aligns with Islam.
 
 Chain of Narrators:
 Give an English transliteration for each narrator in the exact order, separated by “→”.
 
-**Do not** add any other headings or repeat these labels. Do not grade Sahih/Da‘if/etc., and do not invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
-`
+Evaluation of Hadith:
+Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
+
+Do NOT add any other headings or repeat these labels. Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
     },
     {
       role: "user",
@@ -274,7 +272,7 @@ Hadith (English): ${snippet}`
         model:       "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
-        max_tokens:  500
+        max_tokens:  600
       },
       {
         headers: {
@@ -285,18 +283,27 @@ Hadith (English): ${snippet}`
       }
     );
 
-    const commentary = aiResp.data.choices[0]?.message?.content?.trim()
-      || "No commentary received.";
+    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    commentaryCache[cacheKey] = commentary;
-    return res.json({ commentary });
+    // helper to extract each section by its label
+    const getSection = (label, nextLabel) => {
+      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${nextLabel}:|$)`, "i");
+      return (raw.match(re) || [,""])[1].trim();
+    };
+
+    const commentary = getSection("Commentary", "Chain of Narrators");
+    const chain      = getSection("Chain of Narrators", "Evaluation of Hadith");
+    const evaluation = getSection("Evaluation of Hadith", "");
+
+    const payload = { commentary, chain, evaluation };
+    commentaryCache[cacheKey] = payload;
+    return res.json(payload);
 
   } catch (error) {
     console.error("❌ Commentary error:", error.response?.data || error.message);
     return res.status(500).json({ error: "Failed to fetch commentary." });
   }
 });
-
 
 // ─── 9) START SERVER ───────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
