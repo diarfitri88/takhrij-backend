@@ -229,7 +229,7 @@ app.post("/gpt-commentary", async (req, res) => {
   const arabicFull  = (req.body.arabic   || "").trim();
   const reference   = (req.body.reference || "").trim();
   const collection  = (req.body.collection || "").trim();
-  const cacheKey    = reference + "|" + collection;
+  const cacheKey    = `${reference}|${collection}`;
 
   if (!englishFull || !arabicFull || !reference || !collection) {
     return res
@@ -237,27 +237,24 @@ app.post("/gpt-commentary", async (req, res) => {
       .json({ error: "Missing Arabic, English, reference, or collection." });
   }
 
-  const snippet = truncate(englishFull, 500);
-
+  // quick cache check
   if (commentaryCache[cacheKey]) {
-    return res.json({ commentary: commentaryCache[cacheKey] });
+    return res.json(commentaryCache[cacheKey]);
   }
 
+  const snippet = truncate(englishFull, 500);
+
+  // build your GPT prompt
   const messages = [
     {
       role: "system",
-      content: `You are a specialist in Hadith studies. Output exactly three sections—only once each—in this order:
+      content: `You are a specialist in Hadith studies. Output **exactly** three JSON fields—no more, no less—named "commentary", "chain", and "evaluation".
 
-Commentary:
-3–4 sentences explaining context, meaning, importance (no grading labels).
+- "commentary": 3–4 sentences explaining context, meaning, importance.
+- "chain":     English transliteration of each narrator in order, separated by “→”.
+- "evaluation": Brief analysis of the chain’s strength or weakness.
 
-Chain of narrators:
-English transliteration for each name in order, separated by “→”.
-
-Evaluation of Hadith:
-Brief analysis of chain’s strength or weakness.
-
-Do NOT add extra headings or repeat labels.`
+Do **not** output anything else or wrap them in a single string.`
     },
     {
       role: "user",
@@ -285,27 +282,26 @@ Hadith (English): ${snippet}`
       }
     );
 
-    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
+    const payload = aiResp.data.choices[0].message.content
+      .trim()
+      // guard: if it’s a JSON-like string, parse it
+      .replace(/```\s*/g, "")     // strip triple backticks, if any
+      ;
 
-    // split out each section
-    const afterCommentary = raw.split("Commentary:")[1] || "";
-    const commentaryText  = (afterCommentary.split("Chain of narrators:")[0] || "").trim();
+    let data;
+    try {
+      data = JSON.parse(payload);
+    } catch {
+      // fallback: wrap everything in commentary
+      data = { 
+        commentary: payload, 
+        chain: "", 
+        evaluation: "" 
+      };
+    }
 
-    const afterChain = raw.split("Chain of narrators:")[1] || "";
-    const chainText  = (afterChain.split("Evaluation of Hadith:")[0] || "").trim();
-
-    const afterEval = raw.split("Evaluation of Hadith:")[1] || "";
-    const evaluationText = afterEval.trim();
-
-    // build a single string with exactly THREE labels
-    const fullCommentary = [
-      `Commentary: ${commentaryText}`,
-      `Chain of narrators: ${chainText}`,
-      `Evaluation of Hadith: ${evaluationText}`
-    ].join("\n\n");
-
-    commentaryCache[cacheKey] = fullCommentary;
-    return res.json({ commentary: fullCommentary });
+    commentaryCache[cacheKey] = data;
+    return res.json(data);
 
   } catch (err) {
     console.error("❌ Commentary error:", err.response?.data || err.message);
