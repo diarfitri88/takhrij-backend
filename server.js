@@ -3,24 +3,11 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const Fuse = require("fuse.js");
-const fs = require("fs");   
-const csv = require("csv-parser");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-
-let narrators = [];
-
-fs.createReadStream("all_rawis.csv")
-  .pipe(csv())
-  .on("data", (row) => {
-    narrators.push(row);
-  })
-  .on("end", () => {
-    console.log(`✅ Narrators CSV loaded: ${narrators.length} records`);
-  });
 
 // ─── 0) CACHE FOR COMMENTARY ───────────────────────────────────────────────────
 const commentaryCache = {};
@@ -249,96 +236,66 @@ app.post("/gpt-commentary", async (req, res) => {
 
   const snippet = truncate(englishFull, 500);
 
-// Helper function to extract names from Arabic matn
-function extractArabicNames(arabicText) {
-  if (!arabicText) return [];
-  const matches = arabicText.match(/عن\s([^\s،]+)/g);
-  if (!matches) return [];
-  return matches.map(m => m.replace("عن ", "").trim());
-}
-
-let narratorMatches = [];
-const arabicNames = extractArabicNames(req.body.arabic);
-
-arabicNames.forEach((name) => {
-  const normalizedName = name.toLowerCase().replace(/ابن|بن|ب\./g, "").replace(/\s+/g, " ").trim();
-  const match = narrators.find(n => 
-    n.name && n.name.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim().includes(normalizedName)
-  );
-  if (match) narratorMatches.push(match);
-});
-
-let narratorComment = "";
-let hadithGrade = "Unknown";
-
-if (narratorMatches.length) {
-  narratorComment = narratorMatches.map(n => {
-    return `Narrator: ${n.name} | Generation: ${n.grade || "unknown"} | Birth: ${n.birth_date_hijri || "unknown"} | Death: ${n.death_date_hijri || "unknown"} | Reliability: ${n.reliability_grade || "unknown"}`;
-  }).join("\n");
-
-  // Estimate Hadith Grade
-  if (narratorMatches.every(n => (n.reliability_grade || "").toLowerCase().includes("thiqa"))) {
-    hadithGrade = "Sahih";
-  } else if (narratorMatches.some(n => (n.reliability_grade || "").toLowerCase().includes("weak") || (n.reliability_grade || "").toLowerCase().includes("unknown"))) {
-    hadithGrade = "Da'if (due to some narrators being unknown or weak)";
-  } else {
-    hadithGrade = "Hasan";
-  }
-
-  narratorComment = `Estimated Hadith Grade: ${hadithGrade}\n` + narratorComment;
-} else {
-  narratorComment = "Narrator Check: No information found for this hadith.";
-}
-
   if (commentaryCache[cacheKey]) {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
- const messages = [
-  {
-    role: "system",
-    content: `
-You are an expert hadith grader following the methodology of Salafi scholars, including:
+  const messages = [
+    {
+      role: "system",
+      content: `
+You are an expert hadith grader strictly following the methodology of major Salafi scholars, including:
 - Shaykh Albani (Silsilat as-Sahihah, Silsilat ad-Da'ifah)
-- Ibn Hajar, Al-Dhahabi, Ibn Baz, Ibn Uthaymin
+- Ibn Hajar (Fath al-Bari, Taqrib al-Tahdhib)
+- Al-Dhahabi (Mizan al-I'tidal, Siyar A'lam al-Nubala)
+- Ibn Baz, Ibn Uthaymin
 
-Your task is to evaluate the following hadith based on authentic sources. Follow these rules strictly:
+Follow these instructions EXACTLY to avoid mistakes:
 
-✅ If the hadith is found in Sahih Bukhari or Sahih Muslim, say:
-   Grade: Sahih (by consensus of scholars).
+✅ ONLY assign a grade if the hadith is explicitly found in:
+   - Sahih Bukhari
+   - Sahih Muslim
+   - Sunan Abu Dawud, Sunan al-Nasa'i, Sunan Ibn Majah with explicit grading by Albani
+   - Jami' at-Tirmidhi (using Imam Tirmidhi’s explicit grading: Sahih, Hasan, Hasan Sahih, Da'if, Gharib)
+   - Explicit gradings by Albani in Silsilat as-Sahihah or Silsilat ad-Da'ifah
 
-✅ If the hadith is in Jami' at-Tirmidhi, and Tirmidhi graded it (hasan, sahih, gharib, etc.), use that grading. If no grading, reply:
-   Grade: No explicit grading available by Tirmidhi. Consult other sources.
+✅ If the hadith appears in Sahih Bukhari or Sahih Muslim:
+   - Grade: Sahih (by consensus of scholars).
 
-✅ If the hadith is graded by Albani, state his grading (Sahih, Hasan, Da'if, etc.).
+✅ If found in Jami' at-Tirmidhi, quote Tirmidhi’s explicit grading exactly. If no explicit grading is provided by Tirmidhi:
+   - Grade: No explicit grading available by Tirmidhi.
 
-✅ If grading is not available in these sources, say:
-   Grade: No grading available from known Salafi sources. Verify with scholars.
+✅ If Albani explicitly graded the hadith (Sahih, Hasan, Da'if, or Fabricated) in his known books (Silsilah Sahihah/Da'ifah or in his Sunan reviews), use that EXACT grading.
 
-❌ Never invent chains of narration or scholar opinions. Avoid speculative guesses.
+❌ If the hadith is not found explicitly in these mentioned sources with a CLEAR grading:
+   - Grade: No grading available from known Salafi sources. Please verify with qualified scholars.
+   - NEVER GUESS or speculate.
 
-Your output must follow this format exactly:
-Commentary: (at least 3 sentences, plain English, context, and importance)
-Grade: (one word: Sahih, Hasan, Da'if, Very Weak, Fabricated, or No grading available)
-Evaluation: (summarize the source and reasoning; if no grading, state clearly why)
+❌ NEVER guess narrator reliability or invent reasons for weakness.
+❌ NEVER fabricate names, chains, or evaluations.
 
-Be concise, clear, and factual.
+Your response format must be EXACTLY:
+Commentary: Provide context, explain the hadith clearly (at least 3 sentences).
+Grade: Sahih | Hasan | Da'if | Very Weak | Fabricated | No grading available
+Evaluation: Explicitly mention the source and the scholar who graded it. If no grading, explicitly say why it’s unavailable.
+
+BE STRICT. DO NOT DEVIATE. IF UNSURE, SAY: No grading available.
 `
-  },
-  {
-    role: "user",
-    content: `Hadith Reference: ${reference}\nHadith (Arabic): ${req.body.arabic}\nHadith (English): ${snippet}`
-  }
-];
+    },
+    {
+      role: "user",
+      content: `Hadith Reference: ${reference}\nHadith (Arabic): ${req.body.arabic}\nHadith (English): ${snippet}`
+    }
+  ];
 
   try {
     const aiResp = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model:       "openai/gpt-4o-mini",
+        model: "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
-        max_tokens:  400
+        max_tokens: 400
       },
       {
         headers: {
@@ -352,16 +309,21 @@ Be concise, clear, and factual.
     const commentary = aiResp.data.choices[0]?.message?.content?.trim() 
       || "No commentary received.";
 
-      const finalCommentary = `${commentary}\n\n${narratorComment}`;
+    let finalCommentary = commentary;
+
+    if (finalCommentary.includes("No grading available")) {
+      finalCommentary += "\n⚠️ Please verify authenticity with a qualified scholar. GPT cannot confirm grading without explicit known sources.";
+    }
 
     commentaryCache[cacheKey] = finalCommentary;
-return res.json({ commentary: finalCommentary });
+    return res.json({ commentary: finalCommentary });
 
   } catch (error) {
     console.error("❌ Commentary error:", error.response?.data || error.message);
     return res.status(500).json({ error: "Failed to fetch commentary." });
   }
 });
+
 
 // ─── 9) START SERVER ───────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
