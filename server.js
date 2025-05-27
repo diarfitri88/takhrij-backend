@@ -223,6 +223,7 @@ ${q}"
   }
 });
 
+// ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
   const englishFull = (req.body.english || "").trim();
   const arabicFull  = (req.body.arabic   || "").trim();
@@ -246,13 +247,13 @@ app.post("/gpt-commentary", async (req, res) => {
       content: `
 You are a specialist in the sciences of Hadith studies. For each request, output exactly three sections—only once each—in the following order:
 
-Commentary:
+1. Commentary:
 3–4 sentences explaining the context, meaning, and importance of the hadith. Do not mention "Salafi". Just explain the hadith, whether it aligns with Islam, and any relevant context.
 
-Chain of Narrators:
+2. Chain of Narrators:
 List the chain of narrators in **English transliteration**, separated by "→". Do not invent names. If not available, say "Chain not available".
 
-Evaluation of Hadith:
+3. Evaluation of Hadith:
 Briefly analyze the chain's quality (e.g., "All companions in chain—very strong", "Contains weak narrator X—proceed with caution", or "No known weakness"). If the hadith is from Sahih Bukhari or Sahih Muslim, say "This hadith is sound."
 
 No extra sections or repeats. Do not invent sources or opinions. Do not include any other labels.
@@ -286,9 +287,9 @@ Hadith (English): ${snippet}`
 
     const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    // Extract sections
+    // Extract sections properly
     const getSection = (label) => {
-      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n\\s*\\w+:|$)`, "i");
+      const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n(Commentary|Chain of Narrators|Evaluation of Hadith):|$)`, "i");
       return (raw.match(re) || [,""])[1].trim();
     };
 
