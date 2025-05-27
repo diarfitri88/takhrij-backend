@@ -223,94 +223,78 @@ ${q}"
   }
 });
 
-// ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
-app.post("/gpt-commentary", async (req, res) => {
-  const englishFull = (req.body.english  || "").trim();
-  const arabicFull  = (req.body.arabic   || "").trim();
-  const reference   = (req.body.reference|| "").trim();
-  const collection  = (req.body.collection|| "").trim();
-  const cacheKey    = `${reference}|${collection}`;
+// ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
+app.post('/gpt-commentary', async (req, res) => {
+  const englishFull = (req.body.english  || '').trim();
+  const arabicFull  = (req.body.arabic   || '').trim();
+  const reference   = (req.body.reference|| '').trim();
+  const collection  = (req.body.collection|| '').trim().toLowerCase();
 
   if (!englishFull || !arabicFull || !reference || !collection) {
     return res
       .status(400)
-      .json({ error: "Missing Arabic, English, reference, or collection." });
+      .json({ error: 'Missing english, arabic, reference, or collection.' });
   }
 
+  const cacheKey = `${reference}|${collection}`;
   if (commentaryCache[cacheKey]) {
     return res.json(commentaryCache[cacheKey]);
   }
 
-  const snippet = truncate(englishFull, 500);
-  const messages = [
-    {
-      role: "system",
-      content: `
-You are a specialist in Hadith studies. Output exactly three sections—and only once each—**in this order**:
-
-Commentary:
-3–4 sentences explaining context, meaning, and importance.
-
-Chain of Narrators:
-English transliteration of each narrator, in order, separated by “→”.
-
-Evaluation of Hadith:
-Brief analysis of the chain’s strength or weakness.
-
-**Do NOT** add any other headings or repeat labels.`
-    },
-    {
-      role: "user",
-      content: `Hadith Reference: ${reference}
-Hadith (Arabic): ${arabicFull}
-Hadith (English): ${snippet}`
-    }
-  ];
+  const systemPrompt = `You are a specialist in Hadith studies.\n` +
+    `Output exactly these three sections in order and nothing else:\n` +
+    `Commentary: 3–4 sentences explaining context, meaning, and importance.\n` +
+    `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
+    `Evaluation of Hadith: brief note on chain strength or weakness, except override for Sahih Bukhari/Muslim.`;
+  const userPrompt = `Reference: ${reference}\n` +
+    `Collection: ${collection}\n` +
+    `Hadith (Arabic): ${arabicFull}\n` +
+    `Hadith (English): ${englishFull}`;
 
   try {
     const aiResp = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
+      'https://api.openrouter.ai/v1/chat/completions',
       {
-        model:       "openai/gpt-4o-mini",
-        messages,
+        model:       'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userPrompt }
+        ],
         temperature: 0.0,
-        max_tokens: 600
+        max_tokens:  600
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "X-Title": "Takhrij Commentary"
+          'Content-Type': 'application/json'
         }
       }
     );
 
-    const raw = aiResp.data.choices[0]?.message?.content || "";
+    let raw = aiResp.data.choices[0]?.message?.content || '';
+    raw = raw.replace(/```[\s\S]*?```/g, '').replace(/```/g, '').trim();
 
-    // Case-insensitive regex to pull each section:
-    const commentaryMatch = raw.match(
-      /Commentary:\s*([\s\S]*?)(?=Chain of Narrators:)/i
-    );
-    const chainMatch = raw.match(
-      /Chain of Narrators:\s*([\s\S]*?)(?=Evaluation of Hadith:)/i
-    );
-    const evalMatch = raw.match(
-      /Evaluation of Hadith:\s*([\s\S]*)$/i
-    );
+    const commentaryMatch = raw.match(/Commentary:\s*([\s\S]*?)(?=\nChain of Narrators:)/i);
+    const chainMatch      = raw.match(/Chain of Narrators:\s*([\s\S]*?)(?=\nEvaluation of Hadith:)/i);
+    const evalMatch       = raw.match(/Evaluation of Hadith:\s*([\s\S]*)/i);
 
-    const commentary = commentaryMatch ? commentaryMatch[1].trim() : "";
-    const chain      = chainMatch      ? chainMatch[1].trim()      : "";
-    const evaluation = evalMatch       ? evalMatch[1].trim()       : "";
+    const payload = {
+      commentary: commentaryMatch ? commentaryMatch[1].trim() : '',
+      chain:      chainMatch      ? chainMatch[1].trim()      : '',
+      evaluation: evalMatch       ? evalMatch[1].trim()       : ''
+    };
 
-    const payload = { commentary, chain, evaluation };
+    // Override evaluation for Sahih Bukhari and Sahih Muslim
+    if (['bukhari', 'muslim'].includes(collection)) {
+      payload.evaluation = 'Chain is sound and reliable';
+    }
+
     commentaryCache[cacheKey] = payload;
     return res.json(payload);
 
   } catch (err) {
-    console.error("❌ Commentary error:", err.response?.data || err.message);
-    return res
-      .status(500)
-      .json({ error: "Failed to fetch commentary." });
+    console.error('❌ Commentary error:', err.response?.data || err.message);
+    return res.status(500).json({ error: 'Failed to fetch commentary.' });
   }
 });
 
