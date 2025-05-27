@@ -9,7 +9,10 @@
   "dependencies": {
     "axios": "^0.27.2",
     "cors": "^2.8.5",
+<<<<<<< HEAD
     "csv-parser": "^3.2.0",
+=======
+>>>>>>> 9fdc6c8678fe482e997028beffe1d25dec38c4eb
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "fuse.js": "^7.1.0",

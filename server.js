@@ -5,6 +5,7 @@ const axios = require("axios");
 const Fuse = require("fuse.js");
 const fs = require("fs");   
 const csv = require("csv-parser");
+
 const app = express();
 
 app.use(cors());
@@ -330,6 +331,8 @@ Evaluation of Hadith: (summarize isnad, key narrator strengths/weaknesses, and r
 
     commentaryCache[cacheKey] = finalCommentary;
 return res.json({ commentary: finalCommentary });
+    commentaryCache[cacheKey] = commentary;
+    return res.json({ commentary });
 
   } catch (error) {
     console.error("❌ Commentary error:", error.response?.data || error.message);
