@@ -252,7 +252,10 @@ app.post("/gpt-commentary", async (req, res) => {
   // ─── Narrator Check ──────────────────────────────────────────────
 let narratorName = null;
 narrators.forEach((n) => {
-   if (n.name && englishFull.toLowerCase().includes(n.name.toLowerCase())) {
+  if (!n.name) return;
+  const normalizedName = n.name.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim();
+  const normalizedHadith = englishFull.toLowerCase().replace(/ibn|bin|b\./g, "").replace(/\s+/g, " ").trim();
+  if (normalizedHadith.includes(normalizedName)) {
     narratorName = n.name;
   }
 });
