@@ -226,14 +226,16 @@ ${q}"
 // ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
   const englishFull = (req.body.english || "").trim();
+  const arabicFull  = (req.body.arabic   || "").trim();
   const reference   = (req.body.reference || "").trim();
   const collection  = (req.body.collection || "").trim();
   const cacheKey    = reference + "|" + collection;
 
-  if (!englishFull || !reference || !collection) {
-    return res.status(400).json({ error: "Missing reference, collection, or English matn." });
+  if (!englishFull || !arabicFull || !reference || !collection) {
+    return res.status(400).json({ error: "Missing Arabic, English, reference, or collection." });
   }
 
+  // Shorten the English to avoid huge payloads
   const snippet = truncate(englishFull, 500);
 
   if (commentaryCache[cacheKey]) {
@@ -241,44 +243,40 @@ app.post("/gpt-commentary", async (req, res) => {
   }
 
   const messages = [
-  {
-    role: "system",
-    content: `
-You are an expert in Hadith authentication according to salafi scholars. Follow these steps in order:
+    {
+      role: "system",
+      content: `
+You are a specialist in Hadith studies. For each request, you will output:
 
-1. If the hadith is in Sahih Bukhari or Sahih Muslim, grade it “Sahih.”
-2. Otherwise, if it appears in Jami‘ at-Tirmidhi with an explicit grading (Sahih, Hasan, Hasan-Sahih, Da‘if, Gharib), use that grade.
-3. Otherwise, if al-Albani graded it in his Silsilat (as-Sahihah or ad-Da’ifah), use his grading.
-4. Otherwise, assess based on narrator reliability:
-   - If all narrators are companions or universally accepted as trustworthy, grade “Hasan.”
-   - If any narrator is known weak, grade “Da‘if.”
-   - If clearly fabricated, grade “Fabricated.”
-5. If none of the above applies, grade “No grading available.”
+1. Commentary: 3–4 sentences explaining context, meaning, and importance citing salafi scholars, but DO NOT mention salafi.
+2. Evaluation: Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
+3. Chain of Narrators: List the narrators exactly as given in the Arabic text.
 
-Do **not** invent sources or fabricate chains.  
-Your response must follow **exactly** this format:
+Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. Simply explain and list.
 
-Commentary: (3–4 sentences of plain-English context and explanation)  
-Grade: (Sahih, Hasan, Da‘if, Fabricated, or No grading available)  
-Evaluation: (briefly cite which source or narrators informed your grade)
+Your response must follow this exact format:
+
+Commentary: <…>  
+Evaluation: <…>  
+Chain of Narrators: <narrator1> → <narrator2> → …  
 `
-  },
-  {
-    role: "user",
-    content: `Hadith Reference: ${reference}
-Hadith (Arabic): ${req.body.arabic}
+    },
+    {
+      role: "user",
+      content: `Hadith Reference: ${reference}
+Hadith (Arabic): ${arabicFull}
 Hadith (English): ${snippet}`
-  }
-];
+    }
+  ];
 
   try {
     const aiResp = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "openai/gpt-4o-mini",
+        model:       "openai/gpt-4o-mini",
         messages,
         temperature: 0.0,
-        max_tokens: 400
+        max_tokens:  500
       },
       {
         headers: {
@@ -289,24 +287,17 @@ Hadith (English): ${snippet}`
       }
     );
 
-    const commentary = aiResp.data.choices[0]?.message?.content?.trim() 
+    const commentary = aiResp.data.choices[0]?.message?.content?.trim()
       || "No commentary received.";
 
-    let finalCommentary = commentary;
-
-    if (finalCommentary.includes("No grading available")) {
-      finalCommentary += "\n⚠️ Please verify authenticity with a qualified scholar. GPT cannot confirm grading without explicit known sources.";
-    }
-
-    commentaryCache[cacheKey] = finalCommentary;
-    return res.json({ commentary: finalCommentary });
+    commentaryCache[cacheKey] = commentary;
+    return res.json({ commentary });
 
   } catch (error) {
     console.error("❌ Commentary error:", error.response?.data || error.message);
     return res.status(500).json({ error: "Failed to fetch commentary." });
   }
 });
-
 
 // ─── 9) START SERVER ───────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
