@@ -230,8 +230,19 @@ app.post('/gpt-commentary', async (req, res) => {
   const reference   = (req.body.reference || '').trim();
   const collection  = (req.body.collection || '').trim().toLowerCase();
 
+  // Defensive: Always return all 3 fields
+  const errorPayload = {
+    commentary: 'No commentary.',
+    chain: 'No chain.',
+    evaluation: 'No evaluation.'
+  };
+
   if (!englishFull || !arabicFull || !reference || !collection) {
-    return res.status(400).json({ error: 'Missing english, arabic, reference, or collection.' });
+    return res.json({
+      commentary: 'Error: Missing required field.',
+      chain: '',
+      evaluation: ''
+    });
   }
 
   const cacheKey = `${reference}|${collection}`;
@@ -245,7 +256,7 @@ app.post('/gpt-commentary', async (req, res) => {
     `Output exactly these three sections in order and nothing else:\n` +
     `Commentary: 3–4 sentences explaining context, meaning, and importance.\n` +
     `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
-    `Evaluation of Hadith: brief note on chain strength or weakness.`;  // no override here
+    `Evaluation of Hadith: brief note on chain strength or weakness.`;
 
   const userPrompt =
     `Reference: ${reference}\n` +
@@ -273,28 +284,27 @@ app.post('/gpt-commentary', async (req, res) => {
       }
     );
 
-    // strip code fences & trim
     let raw = aiResp.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/```[\s\S]*?```/g, '').trim();
+    console.log('[GPT RAW]', raw); // <--- keep this for now!
+    raw = raw.replace(/```[\\s\\S]*?```/g, '').trim();
 
-    // robust, case-insensitive regex without anchoring to \n
-    const commentaryMatch = raw.match(/Commentary:\s*([\s\S]*?)(?=Chain of Narrators:)/i);
-    const chainMatch      = raw.match(/Chain of Narrators:\s*([\s\S]*?)(?=Evaluation of Hadith:)/i);
-    const evalMatch       = raw.match(/Evaluation of Hadith:\s*([\s\S]*)/i);
+    // More forgiving regex:
+    const commentaryMatch = raw.match(/Commentary[^:]*:\s*([\s\S]*?)(?=Chain of Narrators[^:]*:)/i);
+    const chainMatch      = raw.match(/Chain of Narrators[^:]*:\s*([\s\S]*?)(?=Evaluation[^:]*:)/i);
+    const evalMatch       = raw.match(/Evaluation[^:]*:\s*([\s\S]*)/i);
 
     const payload = {
-      commentary: commentaryMatch ? commentaryMatch[1].trim() : '',
-      chain:      chainMatch      ? chainMatch[1].trim()      : '',
-      evaluation: evalMatch       ? evalMatch[1].trim()       : ''
+      commentary: commentaryMatch && commentaryMatch[1].trim() ? commentaryMatch[1].trim() : 'No commentary.',
+      chain:      chainMatch && chainMatch[1].trim() ? chainMatch[1].trim() : 'No chain.',
+      evaluation: evalMatch && evalMatch[1].trim() ? evalMatch[1].trim() : 'No evaluation.'
     };
 
-    // cache + respond
     commentaryCache[cacheKey] = payload;
     return res.json(payload);
 
   } catch (err) {
     console.error('❌ Commentary error:', err.response?.data || err.message);
-    return res.status(500).json({ error: 'Failed to fetch commentary.' });
+    return res.json(errorPayload);
   }
 });
 
