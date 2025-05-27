@@ -225,20 +225,24 @@ ${q}"
 
 // ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
-  const { english = "", arabic = "", reference = "", collection = "" } = req.body;
-  const englishFull = english.trim();
-  const arabicFull  = arabic.trim();
-  const cacheKey    = `${reference}|${collection}`;
+  const englishFull = (req.body.english || "").trim();
+  const arabicFull  = (req.body.arabic   || "").trim();
+  const reference   = (req.body.reference || "").trim();
+  const collection  = (req.body.collection || "").trim();
+  const cacheKey    = reference + "|" + collection;
 
   if (!englishFull || !arabicFull || !reference || !collection) {
-    return res.status(400).json({ error: "Missing Arabic, English, reference, or collection." });
+    return res
+      .status(400)
+      .json({ error: "Missing Arabic, English, reference, or collection." });
   }
+
+  const snippet = truncate(englishFull, 500);
 
   if (commentaryCache[cacheKey]) {
     return res.json({ commentary: commentaryCache[cacheKey] });
   }
 
-  const snippet = truncate(englishFull, 500);
   const messages = [
     {
       role: "system",
@@ -248,7 +252,7 @@ Commentary:
 3–4 sentences explaining context, meaning, importance (no grading labels).
 
 Chain of Narrators:
-English transliteration of each name in order, separated by “→”.
+English transliteration for each name in order, separated by “→”.
 
 Evaluation of Hadith:
 Brief analysis of chain’s strength or weakness.
@@ -264,29 +268,42 @@ Hadith (English): ${snippet}`
   ];
 
   try {
-    const ai = await axios.post(
+    const aiResp = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
-      { model: "openai/gpt-4o-mini", messages, temperature: 0, max_tokens: 600 },
-      { headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` } }
+      {
+        model:       "openai/gpt-4o-mini",
+        messages,
+        temperature: 0.0,
+        max_tokens: 600
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "X-Title": "Takhrij Commentary"
+        }
+      }
     );
 
-    const raw = ai.data.choices[0]?.message?.content || "";
+    const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    // Simple splits:
-    const afterCommentary   = raw.split("Commentary:")[1] || "";
-    const commentaryPart    = (afterCommentary.split("Chain of Narrators:")[0] || "").trim();
+    // pull out sections by split (more robust than fancy regex)
+    const afterCommentary = raw.split("Commentary:")[1] || "";
+    const commentaryText  = (afterCommentary.split("Chain of Narrators:")[0] || "").trim();
 
-    const afterChain        = raw.split("Chain of Narrators:")[1] || "";
-    const chainPart         = (afterChain.split("Evaluation of Hadith:")[0] || "").trim();
+    const afterChain = raw.split("Chain of Narrators:")[1] || "";
+    const chainText  = (afterChain.split("Evaluation of Hadith:")[0] || "").trim();
 
-    const afterEvaluation   = raw.split("Evaluation of Hadith:")[1] || "";
-    const evaluationPart    = afterEvaluation.trim();
+    const afterEval = raw.split("Evaluation of Hadith:")[1] || "";
+    const evalText  = afterEval.trim();
 
-    // Re-assemble for your front-end parser:
+    // **Rebuild a single string** with all five labels your front-end expects:
     const fullCommentary = [
-      `Commentary: ${commentaryPart}`,
-      `Chain of Narrators: ${chainPart}`,
-      `Evaluation of Hadith: ${evaluationPart}`
+      `Summary: ${commentaryText}`,                  // front-end will pick this up as summary
+      `Commentary: ${commentaryText}`,               // and as commentary
+      `Grade:`,                                      // empty grade
+      `Evaluation of Hadith: ${evalText}`,           // the real evaluation
+      `Chain of narrators: ${chainText}`             // and the chain
     ].join("\n\n");
 
     commentaryCache[cacheKey] = fullCommentary;
@@ -294,7 +311,9 @@ Hadith (English): ${snippet}`
 
   } catch (err) {
     console.error("❌ Commentary error:", err.response?.data || err.message);
-    return res.status(500).json({ error: "Failed to fetch commentary." });
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch commentary." });
   }
 });
 
