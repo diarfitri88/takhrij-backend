@@ -241,6 +241,9 @@ app.post('/gpt-commentary', async (req, res) => {
     return res.json(commentaryCache[cacheKey]);
   }
 
+  // Truncate English input to avoid exceeding prompt length
+  const snippet = truncate(englishFull, 500);
+
   const systemPrompt = `You are a specialist in Hadith studies.\n` +
     `Output exactly these three sections in order and nothing else:\n` +
     `Commentary: 3–4 sentences explaining context, meaning, and importance.\n` +
@@ -249,13 +252,13 @@ app.post('/gpt-commentary', async (req, res) => {
   const userPrompt = `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
     `Hadith (Arabic): ${arabicFull}\n` +
-    `Hadith (English): ${englishFull}`;
+    `Hadith (English): ${snippet}`;
 
   try {
     const aiResp = await axios.post(
-      'https://api.openrouter.ai/v1/chat/completions',
+      'https://openrouter.ai/api/v1/chat/completions',
       {
-        model:       'gpt-4o-mini',
+        model:       'openai/gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user',   content: userPrompt }
