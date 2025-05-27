@@ -223,7 +223,6 @@ ${q}"
   }
 });
 
-// ─── 8) COMMENTARY ENDPOINT ────────────────────────────────────────────────────
 app.post("/gpt-commentary", async (req, res) => {
   const englishFull = (req.body.english || "").trim();
   const arabicFull  = (req.body.arabic   || "").trim();
@@ -256,7 +255,8 @@ Give an English transliteration for each narrator in the exact order, separated 
 Evaluation of Hadith:
 Briefly analyze the chain’s quality (e.g., “All companions in chain—very strong,” “Contains weak narrator X—proceed with caution,” or “No known weakness”).
 
-Do NOT add any other headings or repeat these labels. Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”`
+Do NOT add any other headings or repeat these labels. Do NOT grade Sahih/Da‘if/etc., and do NOT invent sources. For hadith in Sahih Bukhari or Sahih Muslim, simply state “This hadith is sound.”
+`
     },
     {
       role: "user",
@@ -286,16 +286,17 @@ Hadith (English): ${snippet}`
 
     const raw = aiResp.data.choices[0]?.message?.content?.trim() || "";
 
-    const getSection = (label, next = null) => {
-  const re = next
-    ? new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${next}:|$)`, "i")
-    : new RegExp(`${label}:\\s*([\\s\\S]*)`, "i");
-  return (raw.match(re) || [,""])[1].trim();
-};
+    // Updated getSection to handle last section properly
+    const getSection = (label, next) => {
+      const re = next
+        ? new RegExp(`${label}:\\s*([\\s\\S]*?)(?=${next}:)`, "i")
+        : new RegExp(`${label}:\\s*([\\s\\S]*)`, "i");
+      return (raw.match(re) || [,""])[1].trim();
+    };
 
-const commentary = getSection("Commentary", "Chain of Narrators");
-const chain      = getSection("Chain of Narrators", "Evaluation of Hadith");
-const evaluation = getSection("Evaluation of Hadith");
+    const commentary = getSection("Commentary", "Chain of Narrators");
+    const chain      = getSection("Chain of Narrators", "Evaluation of Hadith");
+    const evaluation = getSection("Evaluation of Hadith", null); // Last section, no 'next'
 
     const payload = {
       summary: commentary || "",
