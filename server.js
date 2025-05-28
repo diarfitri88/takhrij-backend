@@ -181,7 +181,7 @@ NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly sa
 
 Provide a very short and concise reasoning why this hadith or idea is problematic or accepted in mainstream Sunni Islam.
 
-Respond briefly, strictly, and accurately.
+Respond in clear, accurate, and easy-to-read paragraphs.
 
 Hadith or statement to analyze:
 "${q}"
@@ -259,7 +259,7 @@ app.post('/gpt-commentary', async (req, res) => {
   const systemPrompt =
     `You are a specialist in Hadith sciences, trained on the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, as well as classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n` +
     `Output exactly these three sections in order and nothing else:\n` +
-    `Commentary: 3–4 sentences explaining context, meaning, and importance but **do not comment on the chain** here.\n` +
+    `Commentary: 3–4 sentences explaining context, meaning, and importance but **do not comment on the chain** here. If the hadith is from Sahih Bukhari, base the explanation on Fath al-Bari by Ibn Hajar. If the hadith is from Sahih Muslim, base the explanation on Sharh of Imam Nawawi. If neither is available, provide a general context explanation from the known Sunnah.\n` +
     `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
     `Evaluation of Hadith: - Provide a **brief but accurate** analysis of the chain's strength or weakness, based **only on the known status of narrators**. 
     - If a narrator is known to be weak, explicitly mention it and why (e.g., "X is considered weak by Al-Albani").
