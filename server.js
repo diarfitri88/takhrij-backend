@@ -167,19 +167,24 @@ app.post("/search-hadith", async (req, res) => {
   // ─── 7) GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
     const prompt = 
-      `You are a knowledgeable Islamic scholar AI trained on the methodology of Salafi scholars such as Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, and classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi’i.
+      `You are a specialist Islamic AI scholar trained strictly according to the Salafi scholarly tradition, including Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.
 
-When given a hadith or statement, you will:
+Your task is, given a hadith or statement:
 
-1. Confirm whether it is authentic, weak, fabricated, or not found in the main hadith collections. If it is fabricated, suggest a sahih hadith that matches closest to it.
-2. If it is weak or fabricated, explain clearly why, citing well-known classical scholars or books who discussed or rejected it.
-3. Provide reasoning behind why the notion is rejected in mainstream Sunni Islam.
-4. Avoid fabricating sources or chains of narration.
-5. Be concise but informative and clear.
+Clearly state whether this hadith is authentic, weak, fabricated, or not found in the major hadith collections (Bukhari, Muslim, Tirmidhi, Abu Dawood, Ibn Majah, Nasai, Malik, Ahmad, Darimi).
 
-Here is the hadith or statement to analyze:
+If weak or fabricated, give a clear, brief explanation why—explicitly citing names of classical scholars or authoritative sources who rejected or weakened it (like Al-Albani, Ibn Hajar, or Al-Dhahabi). If uncertain, clearly say "Status uncertain."
 
-${q}"
+If fabricated, briefly recommend an authentic (sahih) hadith that closely matches the meaning.
+
+NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly say "Unclear status" rather than guessing.
+
+Provide a very short and concise reasoning why this hadith or idea is problematic or accepted in mainstream Sunni (Salafi) Islam.
+
+Respond briefly, strictly, and accurately.
+
+Hadith or statement to analyze:
+"${q}"
 
 `;
 
@@ -252,11 +257,17 @@ app.post('/gpt-commentary', async (req, res) => {
 
   const snippet = truncate(englishFull, 500);
   const systemPrompt =
-    `You are a specialist in Hadith studies.\n` +
+    `You are a specialist in Hadith sciences, trained on the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, as well as classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n` +
     `Output exactly these three sections in order and nothing else:\n` +
-    `Commentary: 3–4 sentences explaining context, meaning, and importance.\n` +
+    `Commentary: 3–4 sentences explaining context, meaning, and importance but **do not comment on the chain** here.\n` +
     `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
-    `Evaluation of Hadith: brief note on chain strength or weakness.`;
+    `Evaluation of Hadith: - Provide a **brief but accurate** analysis of the chain's strength or weakness, based **only on the known status of narrators**. 
+    - If a narrator is known to be weak, explicitly mention it and why (e.g., "X is considered weak by Al-Albani").
+    - If there is a known disconnection (e.g., mursal, missing link), say it clearly.
+    - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**
+    - If a narrator's status is unknown, say: "Status of [name] is unclear."
+
+Be concise, precise, and avoid fabricating any sources or narrators.`;
 
   const userPrompt =
     `Reference: ${reference}\n` +
