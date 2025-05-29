@@ -203,7 +203,7 @@ Hadith or statement to analyze:\n\n
       }
     );
 
-    let raw = "";
+        let raw = "";
     if (
       ai.data &&
       Array.isArray(ai.data.choices) &&
@@ -214,6 +214,10 @@ Hadith or statement to analyze:\n\n
       raw = ai.data.choices[0].message.content.trim();
     }
 
++   // ─── turn every sentence into its own paragraph ────────────────────────────
++   const sentences = raw.match(/[^.!?]+[.!?]+/g) || [raw];
++   raw = sentences.map(s => s.trim()).join("\n\n");
++
     const result =
       `---\n` +
       `English Matn: ${raw}\n` +
@@ -222,6 +226,7 @@ Hadith or statement to analyze:\n\n
       `Try rephrasing, using specific hadith phrases, or checking spelling.`;
 
     return res.json({ result });
+
   } catch (err) {
     console.error("❌ AI fallback error:", err.message);
     return res.json({ result: `❌ No authentic hadith found.` });
