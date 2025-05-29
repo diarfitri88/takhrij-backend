@@ -162,8 +162,7 @@ app.post("/search-hadith", async (req, res) => {
       return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}`;
     }).join("\n");
     return res.json({ result });
- }
-else { 
+ } else {
  // ─── 7) GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
     const prompt =
@@ -192,34 +191,23 @@ else {
       }
     );
 
-    let raw = "";
-    if (
-      ai.data &&
-      Array.isArray(ai.data.choices) &&
-      ai.data.choices[0] &&
-      ai.data.choices[0].message &&
-      typeof ai.data.choices[0].message.content === "string"
-    ) {
-      raw = ai.data.choices[0].message.content.trim();
+     let raw = "";
+      if (ai.data?.choices?.[0]?.message?.content) {
+        raw = ai.data.choices[0].message.content.trim();
+      }
+      raw = raw.replace(/([.?!])\s*/g,"$1\n\n");
+
+       const result =
+        `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
+        `Warning: This particular phrase/word is not found in the 9 main books. ` +
+        `Try rephrasing, using specific hadith phrases, or checking spelling.`;
+
+      return res.json({ result });
+    } catch (err) {
+      console.error("❌ AI fallback error:", err.message);
+      return res.json({ result: `❌ No authentic hadith found.` });
     }
-
-    // split sentences into paragraphs
-    raw = raw.replace(/([.?!])\s*/g, "$1\n\n");
-
-    const result =
-      `---\n` +
-      `English Matn: ${raw}\n` +
-      `Reference: AI Generated\n` +
-      `Warning: This particular phrase/word is not found in the 9 main books. ` +
-      `Try rephrasing, using specific hadith phrases, or checking spelling.`;
-
-    return res.json({ result });
-
-  } catch (err) {
-    console.error("❌ AI fallback error:", err.message);
-    return res.json({ result: `❌ No authentic hadith found.` });
   }
-}
 });
 
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
