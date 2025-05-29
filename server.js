@@ -165,9 +165,9 @@ app.post("/search-hadith", async (req, res) => {
   }
 
   // ─── 7) GPT FALLBACK ─────────────────────────────────────────────────────────
-  try {
-    const prompt = 
-      `You are a specialist Islamic AI scholar trained strictly according to the Islamic hadith scholarly tradition, including Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n\n
+try {
+  const prompt = 
+    `You are a specialist Islamic AI scholar trained strictly according to the Islamic hadith scholarly tradition, including Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n\n
 
 Your task is, given a hadith or statement:\n\n
 
@@ -184,56 +184,53 @@ Provide a short and concise reasoning why this hadith or idea is problematic or 
 Respond with short, clear, separate paragraphs—each paragraph with one key idea. Avoid long, dense blocks of text. Use easy-to-understand language for a general audience.\n\n
 
 Hadith or statement to analyze:\n\n
-"${q}"
-
+"${q}"\n\n
 `;
 
-    const ai = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: "openai/gpt-4o-mini",
-        messages: [{ role: "system", content: prompt }],
-        max_tokens: 500
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+  const ai = await axios.post(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      model: "openai/gpt-4o-mini",
+      messages: [{ role: "system", content: prompt }],
+      max_tokens: 500
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
       }
-    );
-
-        let raw = "";
-    if (
-      ai.data &&
-      Array.isArray(ai.data.choices) &&
-      ai.data.choices[0] &&
-      ai.data.choices[0].message &&
-      typeof ai.data.choices[0].message.content === "string"
-    ) {
-      raw = ai.data.choices[0].message.content.trim();
     }
+  );
 
-const sentences = raw.match(/[^.!?]+[.!?]+/g) || [raw];
-raw = sentences
-  .map(s => s.trim())
-  .filter(Boolean)
-  .join("\n\n");
-    const result =
-      `---\n` +
-      `English Matn: ${raw}\n` +
-      `Reference: AI Generated\n` +
-      `Warning: This particular phrase/word is not found in the 9 main books. ` +
-      `Try rephrasing, using specific hadith phrases, or checking spelling.`;
-
-    return res.json({ result });
-
-  } catch (err) {
-    console.error("❌ AI fallback error:", err.message);
-    return res.json({ result: `❌ No authentic hadith found.` });
+  // extract the raw GPT reply
+  let raw = "";
+  if (
+    ai.data &&
+    Array.isArray(ai.data.choices) &&
+    ai.data.choices[0] &&
+    ai.data.choices[0].message &&
+    typeof ai.data.choices[0].message.content === "string"
+  ) {
+    raw = ai.data.choices[0].message.content.trim();
   }
-});
 
+  // **NEW**: turn each sentence into its own paragraph
+  raw = raw.replace(/([.?!])\s*/g, "$1\n\n");
+
+  const result =
+    `---\n` +
+    `English Matn: ${raw}\n` +
+    `Reference: AI Generated\n` +
+    `Warning: This particular phrase/word is not found in the 9 main books. ` +
+    `Try rephrasing, using specific hadith phrases, or checking spelling.`;
+
+  return res.json({ result });
+
+} catch (err) {
+  console.error("❌ AI fallback error:", err.message);
+  return res.json({ result: `❌ No authentic hadith found.` });
+}
+  
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
 app.post('/gpt-commentary', async (req, res) => {
   const englishFull = (req.body.english || '').trim();
