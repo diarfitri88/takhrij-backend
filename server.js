@@ -211,7 +211,7 @@ Hadith or statement to analyze:
       ai.data.choices[0].message &&
       typeof ai.data.choices[0].message.content === "string"
     ) {
-      raw = ai.data.choices[0].message.content.trim();
+      raw = ai.data.choices[0].message.content.trim().replace(/([.?!])\s*/g, '$1\n\n');
     }
 
     const result =
