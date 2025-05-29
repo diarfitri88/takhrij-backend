@@ -191,11 +191,11 @@ app.post("/search-hadith", async (req, res) => {
       }
     );
 
-     let raw = "";
-      if (ai.data?.choices?.[0]?.message?.content) {
-        raw = ai.data.choices[0].message.content.trim();
-      }
-      raw = raw.replace(/([.?!])\s*/g,"$1\n\n");
+   let raw = ai.data.choices[0]?.message?.content || '';
+    raw = raw.replace(/\n{2,}/g, '\n\n').trim();
+
+    // Final fallback text formatting
+    const formatted = raw.split('\n\n').map(p => p.trim()).join('\n\n');
 
        const result =
         `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
