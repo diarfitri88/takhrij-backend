@@ -181,7 +181,9 @@ NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly sa
 
 Provide a very short and concise reasoning why this hadith or idea is problematic or accepted in mainstream Sunni Islam.
 
-Always respond in clear, complete **paragraphs**—not bullet points—and never speculate or hallucinate information. Use concise sentences that are easy for a layperson to understand.
+Respond with short, clear, separate paragraphs—**each paragraph with one key idea**. Avoid long, dense blocks of text.
+
+Use easy-to-understand language for a general audience.
 
 Hadith or statement to analyze:
 "${q}"
@@ -211,14 +213,14 @@ Hadith or statement to analyze:
       ai.data.choices[0].message &&
       typeof ai.data.choices[0].message.content === "string"
     ) {
-      raw = ai.data.choices[0].message.content.trim().replace(/([.?!])\s*/g, '$1\n\n');
+      raw = ai.data.choices[0].message.content.trim();
     }
 
     const result =
       `---\n` +
       `English Matn: ${raw}\n` +
       `Reference: AI Generated\n` +
-      `Warning: This hadith is not found in the 9 main books. ` +
+      `Warning: This particular phrase/word is not found in the 9 main books. ` +
       `Try rephrasing, using specific hadith phrases, or checking spelling.`;
 
     return res.json({ result });
