@@ -214,10 +214,11 @@ Hadith or statement to analyze:\n\n
       raw = ai.data.choices[0].message.content.trim();
     }
 
-+   // ─── turn every sentence into its own paragraph ────────────────────────────
-+   const sentences = raw.match(/[^.!?]+[.!?]+/g) || [raw];
-+   raw = sentences.map(s => s.trim()).join("\n\n");
-+
+const sentences = raw.match(/[^.!?]+[.!?]+/g) || [raw];
+raw = sentences
+  .map(s => s.trim())
+  .filter(Boolean)
+  .join("\n\n");
     const result =
       `---\n` +
       `English Matn: ${raw}\n` +
