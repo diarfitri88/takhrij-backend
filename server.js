@@ -124,7 +124,7 @@ function initFuse() {
 
   fuse = new Fuse(fuseData, {
     includeScore: true,
-    threshold: 0.3,
+    threshold: 0.2,
     ignoreLocation: true,
     keys: ['text']
   });
@@ -162,30 +162,20 @@ app.post("/search-hadith", async (req, res) => {
       return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}`;
     }).join("\n");
     return res.json({ result });
-  }
-
-  // ─── 7) GPT FALLBACK ─────────────────────────────────────────────────────────
+ }
+else { 
+ // ─── 7) GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
     const prompt =
-      `You are a specialist Islamic AI scholar trained strictly according to the Islamic hadith scholarly tradition, including Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n\n
-
-Your task is, given a hadith or statement:\n\n
-
-Clearly state whether this hadith is authentic, weak, fabricated, or not found in the major hadith collections (Bukhari, Muslim, Tirmidhi, Abu Dawood, Ibn Majah, Nasai, Malik, Ahmad, Darimi).\n\n
-
-If weak or fabricated, give a clear, brief explanation why—explicitly citing names of classical scholars or authoritative sources who rejected or weakened it (like Al-Albani, Ibn Hajar, or Al-Dhahabi). If uncertain, clearly say "Status uncertain."\n\n
-
-If fabricated, briefly recommend an authentic (sahih) hadith that closely matches the meaning.\n\n
-
-NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly say "Unclear status" rather than guessing.\n\n
-
-Provide a short and concise reasoning why this hadith or idea is problematic or accepted in mainstream Sunni Islam.\n\n
-
-Respond with short, clear, separate paragraphs—each paragraph with one key idea. Avoid long, dense blocks of text. Use easy-to-understand language for a general audience.\n\n
-
-Hadith or statement to analyze:\n\n
-"${q}"\n\n
-`;
+      `You are a specialist Islamic AI scholar trained strictly according to the Islamic hadith scholarly tradition, including Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n\n` +
+      `Your task is, given a hadith or statement:\n\n` +
+      `Clearly state whether this hadith is authentic, weak, fabricated, or not found in the major hadith collections (Bukhari, Muslim, Tirmidhi, Abu Dawood, Ibn Majah, Nasai, Malik, Ahmad, Darimi).\n\n` +
+      `If weak or fabricated, give a clear, brief explanation why—explicitly citing names of classical scholars or authoritative sources who rejected or weakened it (like Al-Albani, Ibn Hajar, or Al-Dhahabi). If uncertain, clearly say "Status uncertain."\n\n` +
+      `If fabricated, briefly recommend an authentic (sahih) hadith that closely matches the meaning.\n\n` +
+      `NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly say "Unclear status" rather than guessing.\n\n` +
+      `Provide a short and concise reasoning why this hadith or idea is problematic or accepted in mainstream Sunni Islam.\n\n` +
+      `Respond with short, clear, separate paragraphs—each paragraph with one key idea. Avoid long, dense blocks of text. Use easy-to-understand language for a general audience.\n\n` +
+      `Hadith or statement to analyze:\n\n"${q}"\n\n`;
 
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -202,7 +192,6 @@ Hadith or statement to analyze:\n\n
       }
     );
 
-    // grab the raw reply
     let raw = "";
     if (
       ai.data &&
@@ -214,7 +203,7 @@ Hadith or statement to analyze:\n\n
       raw = ai.data.choices[0].message.content.trim();
     }
 
-    // split sentences into their own paragraphs
+    // split sentences into paragraphs
     raw = raw.replace(/([.?!])\s*/g, "$1\n\n");
 
     const result =
@@ -230,7 +219,9 @@ Hadith or statement to analyze:\n\n
     console.error("❌ AI fallback error:", err.message);
     return res.json({ result: `❌ No authentic hadith found.` });
   }
-  
+}
+});
+
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
 app.post('/gpt-commentary', async (req, res) => {
   const englishFull = (req.body.english || '').trim();
