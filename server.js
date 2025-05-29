@@ -181,7 +181,7 @@ NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly sa
 
 Provide a very short and concise reasoning why this hadith or idea is problematic or accepted in mainstream Sunni Islam.
 
-Respond in clear, accurate, and easy-to-read paragraphs.
+Always respond in clear, complete **paragraphs**—not bullet points—and never speculate or hallucinate information. Use concise sentences that are easy for a layperson to understand.
 
 Hadith or statement to analyze:
 "${q}"
