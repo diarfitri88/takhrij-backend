@@ -296,7 +296,6 @@ Be concise, precise, and avoid fabricating any sources or narrators.`;
     );
 
     let raw = aiResp.data.choices[0]?.message?.content || '';
-    console.log('[GPT RAW]', raw); // <--- keep this for now!
     raw = raw.replace(/```[\\s\\S]*?```/g, '').trim();
 
     // More forgiving regex:
