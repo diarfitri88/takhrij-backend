@@ -257,6 +257,8 @@ app.post('/gpt-commentary', async (req, res) => {
     - If there is a known disconnection (e.g., mursal, missing link), say it clearly.
     - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**
     - If a narrator's status is unknown, say: "Status of [name] is unclear."
+    - State if the hadith is ahad or mutawatir if it is sahih.
+    - If the hadith is Hadith Qudsi, Marfu' or Mawquf.
 
 Be concise, precise, and avoid fabricating any sources or narrators.`;
 
