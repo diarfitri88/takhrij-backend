@@ -170,13 +170,14 @@ app.post("/search-hadith", async (req, res) => {
       
       Your task is, given a hadith or statement:
       
-      Clearly state whether this hadith is authentic, weak, fabricated, or not found in the major hadith collections (Bukhari, Muslim, Tirmidhi, Abu Dawood, Ibn Majah, Nasai, Malik, Ahmad, Darimi).\n\n +
+      - Clearly state whether this hadith is authentic, weak, fabricated, or not found in the major hadith collections (Bukhari, Muslim, Tirmidhi, Abu Dawood, Ibn Majah, Nasai, Malik, Ahmad, Darimi).
       
-      If weak or fabricated, give a clear, brief explanation why—explicitly citing names of classical scholars or authoritative sources who rejected or weakened it (like Al-Albani, Ibn Hajar, or Al-Dhahabi). If uncertain, clearly say "Status uncertain."\n\n +
+      - If weak or fabricated, give a clear, brief explanation why—explicitly citing names of classical scholars or authoritative sources who rejected or weakened it (like Al-Albani, Ibn Hajar, or Al-Dhahabi). If uncertain, clearly say "Status uncertain."
       
-      If fabricated, briefly recommend an authentic (sahih) hadith that closely matches the meaning.\n\n +
-      
-      NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly say "Unclear status" rather than guessing.\n\n +
+      - If fabricated, briefly recommend an authentic (sahih) hadith that closely matches the meaning.
+
+      Rules to follow:
+      NEVER fabricate or guess sources, narrators, or grades. If unsure, explicitly say "Unclear status" rather than guessing.
       
       Provide a short and concise reasoning why this hadith or idea is problematic or accepted in mainstream Sunni Islam.
       
