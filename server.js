@@ -3,8 +3,11 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const Fuse = require("fuse.js");
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
+const mutawatirData = JSON.parse(fs.readFileSync(path.join(__dirname, 'mutawatir.json'), 'utf8'));
 
 app.use(cors());
 app.use(express.json());
@@ -40,6 +43,13 @@ function normalize(text) {
     .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '') // strip punctuation
     .replace(/\s{2,}/g, ' ')               // collapse multiple spaces
     .trim();
+}
+
+// ─── HELPER: Check if Hadith is Mutawatir ───────────────────────────────────────
+function checkMutawatir(reference) {
+  return mutawatirData.mutawatirHadiths.find(h => 
+    h.reference.some(r => reference.toLowerCase().includes(r.toLowerCase()))
+  ) || null;
 }
 
 // ─── 4) LOAD HADITH COLLECTIONS ────────────────────────────────────────────────
@@ -159,7 +169,14 @@ app.post("/search-hadith", async (req, res) => {
       const ar  = h.arabic || "[No Arabic]";
       const num = h.hadithnumber || h.id || h.number || "Unknown";
       const ref = `${names[h.collection] || "Unknown"} ${num}`;
-      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}`;
+
+       // Mutawatir Check
+  const mutawatirInfo = checkMutawatir(ref);
+  const classification = mutawatirInfo
+    ? `Classification: Mutawatir\nNotes: ${mutawatirInfo.notes}`
+    : `Classification: Ahad`;
+
+      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\n${classification}`;
     }).join("\n");
     return res.json({ result });
  } else {
