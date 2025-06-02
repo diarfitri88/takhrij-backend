@@ -319,9 +319,12 @@ Be concise, precise, and avoid fabricating any sources or narrators.`;
       evaluation: evalMatch && evalMatch[1].trim() ? evalMatch[1].trim() : 'No evaluation.'
     };
 
-    if (['bukhari', 'muslim'].includes(collection)) {
-  payload.evaluation = 'Chain is sound and reliable by default.';
+ if (['bukhari', 'muslim'].includes(collection)) {
+  if (!payload.evaluation.toLowerCase().includes('chain is sound and reliable by default')) {
+    payload.evaluation += '\nChain is sound and reliable by default.';
+  }
 }
+
     
     commentaryCache[cacheKey] = payload;
     return res.json(payload);
