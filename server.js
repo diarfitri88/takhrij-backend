@@ -272,10 +272,10 @@ app.post('/gpt-commentary', async (req, res) => {
     `Evaluation of Hadith: - Provide a **brief but accurate** analysis of the chain's strength or weakness, based **only on the known status of narrators**. 
     - If a narrator is known to be weak, explicitly mention it and why (e.g., "X is considered weak by Al-Albani").
     - If there is a known disconnection (e.g., mursal, missing link), say it clearly.
-    - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**
+    - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**, if the hadith is widely narrated by multiple companions across different chains, mention: 'Classification: Mutawatir'. Otherwise, consider it Ahad.
     - If a narrator's status is unknown, say: "Status of [name] is unclear."
-    - State if the hadith is ahad or mutawatir if it is sahih.
-    - If the hadith is Hadith Qudsi, Marfu' or Mawquf.
+    - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
+    - Only classify a hadith as Qudsi, Marfu', or Mawquf if the chain or text explicitly indicates it. If unclear, say: 'Classification of Qudsi, Marfu', or Mawquf not specified.
 
 Be concise, precise, and avoid fabricating any sources or narrators.`;
 
