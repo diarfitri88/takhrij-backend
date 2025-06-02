@@ -15,6 +15,15 @@ app.use(express.json());
 // ─── 0) CACHE FOR COMMENTARY ───────────────────────────────────────────────────
 const commentaryCache = {};
 
+// ─── RATE LIMITING ──────────────────────────────────────────────────────────────
+const aiCallTracker = {}; // Track AI calls by IP
+
+// Helper to reset counts every midnight
+setInterval(() => {
+  Object.keys(aiCallTracker).forEach(ip => aiCallTracker[ip] = 0);
+  console.log('✅ AI call tracker reset for the day.');
+}, 24 * 60 * 60 * 1000); // 24 hours
+
 // ─── 1) HELPER: Truncate long text to 500 chars ───────────────────────────────
 function truncate(text, max = 500) {
   const singleLine = text.replace(/[\r\n]+/g, ' ');
@@ -259,6 +268,15 @@ app.post('/gpt-commentary', async (req, res) => {
   }
 
   const cacheKey = `${reference}|${collection}`;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  aiCallTracker[ip] = (aiCallTracker[ip] || 0) + 1;
+  if (aiCallTracker[ip] > 5) {
+    return res.json({
+      commentary: 'Daily AI limit reached. Please try again tomorrow.',
+      chain: '',
+      evaluation: ''
+    });
+  }
   if (commentaryCache[cacheKey]) {
     return res.json(commentaryCache[cacheKey]);
   }
