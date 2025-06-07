@@ -15,15 +15,32 @@ app.use(express.json());
 // ─── 0) CACHE FOR COMMENTARY ───────────────────────────────────────────────────
 const commentaryCache = {};
 
-// ─── RATE LIMITING ──────────────────────────────────────────────────────────────
-const aiCallTracker = {}; // Track AI calls by IP
+// ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
+const aiCallTracker = {}; // { 'IP': { count: x, lastReset: timestamp } }
 
-// Helper to reset counts every midnight
-setInterval(() => {
-  Object.keys(aiCallTracker).forEach(ip => aiCallTracker[ip] = 0);
-  console.log('✅ AI call tracker reset for the day.');
-}, 24 * 60 * 60 * 1000); // 24 hours
+const MAX_CALLS = 5;
+const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
+function checkAiLimit(ip) {
+  const now = Date.now();
+
+  if (!aiCallTracker[ip]) {
+    aiCallTracker[ip] = { count: 0, lastReset: now };
+  }
+
+  // Reset if 24 hours passed since lastReset
+  if (now - aiCallTracker[ip].lastReset >= TIME_LIMIT) {
+    aiCallTracker[ip].count = 0;
+    aiCallTracker[ip].lastReset = now;
+  }
+
+  if (aiCallTracker[ip].count >= MAX_CALLS) {
+    return false; // Limit reached
+  }
+
+  aiCallTracker[ip].count++;
+  return true; // Allowed
+}
 // ─── 1) HELPER: Truncate long text to 500 chars ───────────────────────────────
 function truncate(text, max = 500) {
   const singleLine = text.replace(/[\r\n]+/g, ' ');
@@ -268,15 +285,14 @@ app.post('/gpt-commentary', async (req, res) => {
   }
 
   const cacheKey = `${reference}|${collection}`;
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  aiCallTracker[ip] = (aiCallTracker[ip] || 0) + 1;
-  if (aiCallTracker[ip] > 5) {
-    return res.json({
-      commentary: 'Daily AI limit reached. Please try again tomorrow.',
-      chain: '',
-      evaluation: ''
-    });
-  }
+  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.socket.remoteAddress;
+ if (!checkAiLimit(ip)) {
+  return res.json({
+    commentary: 'Daily AI limit reached. Please try again after 24 hours.',
+    chain: '',
+    evaluation: ''
+  });
+}
   if (commentaryCache[cacheKey]) {
     return res.json(commentaryCache[cacheKey]);
   }
