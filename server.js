@@ -18,7 +18,7 @@ const commentaryCache = {};
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = {}; // { 'IP': { count: x, lastReset: timestamp } }
 
-const MAX_CALLS = 5;
+const MAX_CALLS = 15;
 const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 function checkAiLimit(ip) {
