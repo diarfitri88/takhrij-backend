@@ -244,16 +244,18 @@ app.post("/search-hadith", async (req, res) => {
     );
 
    let raw = ai.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/\n{2,}/g, '\n\n').trim();
+    // raw = raw.replace(/\n{2,}/g, '\n\n').trim(); 
 
     // Final fallback text formatting
-    const formatted = raw.split('\n\n').map(p => p.trim()).join('\n\n');
+    // const formatted = raw.split('\n\n').map(p => p.trim()).join('\n\n');
 
        const result =
-        `---\nEnglish Matn: ${formatted}\nReference: AI Generated\n` +
-        `Warning: Test This particular phrase/word is not found in the 9 main books. ` +
+        `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
+        `Warning: This particular phrase/word is not found in the 9 main books. ` +
         `Try rephrasing, using specific hadith phrases, or checking spelling.`;
 
+    console.log('result');
+    console.log(result);
       return res.json({ result });
     } catch (err) {
       console.error("❌ AI fallback error:", err.message);
