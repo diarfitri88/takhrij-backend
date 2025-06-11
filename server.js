@@ -251,7 +251,7 @@ app.post("/search-hadith", async (req, res) => {
 
        const result =
         `---\nEnglish Matn: ${formatted}\nReference: AI Generated\n` +
-        `Warning: This particular phrase/word is not found in the 9 main books. ` +
+        `Warning: Test This particular phrase/word is not found in the 9 main books. ` +
         `Try rephrasing, using specific hadith phrases, or checking spelling.`;
 
       return res.json({ result });
