@@ -227,16 +227,16 @@ Your job:
 
 4. Be gentle, avoid sounding harsh. Use plain language for general Muslims.
 
-5. Suggest the user on what keywords or phrase to search for if it is found in the 9 main books.
+5. If advising how to search in the app, DO NOT recommend general topics like “attributes of the Prophet.” Instead, recommend users to search using 2–4 specific words from the hadith itself — short and clear phrases like “strong believer,” “seek knowledge,” or “love for brother"
 
 ✅ Format:
-- Paragraph 1: Verdict in simple words
+Paragraph 1: Verdict in simple words
 
-- Paragraph 2: Explanation (why not authentic or found)
+Paragraph 2: Explanation (why not authentic or found)
 
-- Paragraph 3: Suggestion (if any)
+Paragraph 3: Suggestion (if any)
 
-- Paragraph 4: Advice
+Paragraph 4: Advice
 
 Always write “Prophet Muhammad ﷺ” respectfully with the salutation in Arabic (ﷺ).
 Keep tone warm and clear.
@@ -262,10 +262,11 @@ Keep tone warm and clear.
     );
 
    let raw = ai.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/\*\*/g, '');
-raw = raw.replace(/\r?\n\r?\n/g, '\n\n');
-raw = raw.replace(/\r?\n/g, '\n');
-raw = raw.trim();
+    raw = raw.replace(/\*\*/g, '');                    // Remove markdown
+    raw = raw.replace(/\r\n/g, '\n');                  // Normalize Windows line endings
+    raw = raw.replace(/\n{3,}/g, '\n\n');              // Collapse >2 line breaks to 2
+    raw = raw.replace(/\n{2,}/g, '\n\n');              // Ensure paragraph spacing
+    raw = raw.trim();
     
     const result =
       `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
