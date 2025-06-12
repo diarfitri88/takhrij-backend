@@ -210,24 +210,29 @@ app.post("/search-hadith", async (req, res) => {
 // ─── GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
     const prompt = `
-You are a specialist Hadith scholar trained strictly according to the Islamic hadith scholarly tradition, including Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.
+You are a hadith specialist trained on the methodology of Salafi scholars: Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.
 
-A user has submitted a phrase, statement, or partial hadith that is **not found in the 9 major books** (Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, Darimi).
+The user has entered a hadith or phrase NOT found in the 9 main hadith books (Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, Darimi).
 
-Your task is to:
-1. Evaluate if it is a real hadith or not.
-2. If it is known: classify it (Sahih, Hasan, Da'if, Mawdu’, etc.) and give exact scholar reference (e.g., Albani, Ibn Hajar).
-3. If fabricated or weak, explain why (e.g., weak narrator, disconnected chain).
-4. If no result found, say: “No known authentic hadith found matching this wording.”
-5. Suggest a **real sahih hadith with similar meaning**, if possible.
+Your job:
+1. If this phrase is a known hadith, classify it as Sahih, Hasan, Da'if, Fabricated, or Unknown.
+2. Quote Salafi scholars (e.g., Al-Albani) if known.
+3. If fabricated or weak, explain briefly (e.g., unknown narrator, broken chain, fabricated meaning).
+4. Suggest a **similar authentic hadith** if available.
+5. If unknown, say: "No known authentic hadith matches this wording."
 
-⚠️ Rules:
-- Do NOT guess sources.
-- Do NOT merge multiple hadiths.
-- Write ONLY 3–4 short, clean paragraphs — clear line breaks — no markdown or HTML.
+🛑 NEVER invent a hadith or narrator.
+✅ Format your response as:
+- Paragraph 1: Verdict and source (e.g., Albani graded it Hasan)
+- Paragraph 2: Short reason why (e.g., narrator is weak)
+- Paragraph 3: Similar authentic hadith (if any)
+- Paragraph 4: Final conclusion and advice.
 
-User query: "${q}"
+Always type ﷺ after Prophet Muhammad's name.
+Use clear line breaks between each paragraph.
     `.trim();
+
+    const userPrompt = `Phrase or statement to verify:\n"${q}"`;
 
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -245,15 +250,10 @@ User query: "${q}"
       }
     );
 
-    let raw = ai.data.choices[0]?.message?.content || '';
-
-    // Strip Markdown and ensure paragraph spacing
-    raw = raw
-      .replace(/\*\*/g, '')                      // remove bold
-      .replace(/\n{2,}/g, '\n\n')                // keep only double newlines
-      .replace(/\n\s+/g, '\n')                   // remove leading spaces on new lines
-      .trim();
-
+   let raw = ai.data.choices[0]?.message?.content || '';
+    raw = raw.replace(/\*\*/g, ''); // Remove markdown
+    raw = raw.replace(/\n{2,}/g, '\n\n').trim(); // Ensure paragraph spacing
+    
     const result =
       `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
       `Warning: Warning: This phrase was not found in any of the 9 primary hadith collections. ` +
