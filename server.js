@@ -219,17 +219,13 @@ The user entered a phrase that was NOT found in the 9 primary hadith books: Bukh
 
 Reply in the following format:
 
-Paragraph 1: If the phrase is an actual known hadith, briefly verify it and state its grading (Sahih, Hasan, Da'if, etc), and give the actual hadith from the 9 main books \n +
+Paragraph 1: If the phrase is an actual known hadith, briefly verify it and state its grading (Sahih, Hasan, Da'if, etc), and give the actual hadith from the 9 main books 
 
-Paragraph 2: If it's not found, gently explain that the phrase does not exist in the 9 main hadith collections \n +
+Paragraph 2: If it's not found, gently explain that the phrase does not exist in the 9 main hadith collections
 
-Paragraph 3: If appropriate, suggest a **similar authentic hadith** that matches close to the meaning \n +
+Paragraph 3: If appropriate, suggest a **similar authentic hadith** that matches close to the meaning 
 
-Paragraph 4: Suggest keywords that are short, specific, and likely to match known authentic hadith matn — for example:
-“smiling is charity”
-“seek knowledge”
-“the moon split”
-Do NOT suggest general topics like “miracles of the Prophet” or “punishment of grave”. These are too broad and unlikely to match.
+Paragraph 4: Suggest keywords that are short, specific, and likely to match known authentic hadith matn — for example: “smiling is charity”, “seek knowledge”, “the moon split”.  Do NOT suggest general topics like “miracles of the Prophet” or “punishment of grave”. These are too broad and unlikely to match
 
 Only suggest real hadith phrase fragments or matn-based expressions users can search for in exact words.
 Be gentle, avoid sounding harsh. Use plain language for general Muslims.
@@ -258,11 +254,11 @@ Keep tone warm and clear.
     );
 
    let raw = ai.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/\*\*/g, '');                    // Remove markdown
-    raw = raw.replace(/\r\n/g, '\n');                  // Normalize Windows line endings
-    raw = raw.replace(/\n{3,}/g, '\n\n');              // Collapse >2 line breaks to 2
-    raw = raw.replace(/\n{2,}/g, '\n\n');              // Ensure paragraph spacing
-    raw = raw.trim();
+  raw = raw.replace(/\r\n/g, '\n');        // normalize Windows line endings
+  raw = raw.replace(/\n{3,}/g, '\n\n');    // collapse 3+ line breaks to exactly 2
+  raw = raw.replace(/\n(?!\n)/g, '\n\n');  // turn every single \n into \n\n
+  raw = raw.trim();
+
     
     const result =
       `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
