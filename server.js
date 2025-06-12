@@ -207,13 +207,6 @@ app.post("/search-hadith", async (req, res) => {
     return res.json({ result });
  } else {
 // ─── GPT FALLBACK ─────────────────────────────────────────────────────────
-app.post('/gpt-fallback', async (req, res) => {
-  const { query: q } = req.body;
-
-  if (!q || typeof q !== 'string' || !q.trim()) {
-    return res.json({ result: '❌ No query provided.' });
-  }
-
   try {
     const prompt = `
 You are a specialist Hadith scholar trained strictly according to the Islamic hadith scholarly tradition, including Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.
