@@ -208,6 +208,10 @@ app.post("/search-hadith", async (req, res) => {
  } else {
 // ─── GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
+   const q = (req.body.query || '').trim();
+if (!q) {
+  return res.json({ result: '❌ No query provided.' });
+}   
     const prompt = `
 You are a hadith specialist trained on the methodology of Salafi scholars: Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.
 
@@ -237,9 +241,10 @@ Use clear line breaks between each paragraph.
       "https://openrouter.ai/api/v1/chat/completions",
       {
         model: "openai/gpt-4o-mini",
-        messages: [{ role: "system", content: prompt }],
-        max_tokens: 500,
-        temperature: 0.2
+        messages: [ { role: "system", content: prompt },
+  { role: "user", content: `Phrase or statement to verify:\n"${q}"` }],
+        max_tokens: 600,
+        temperature: 0.1
       },
       {
         headers: {
