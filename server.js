@@ -206,7 +206,6 @@ app.post("/search-hadith", async (req, res) => {
     }).join("\n");
     return res.json({ result });
  } else {
-      }
 // ─── GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
     const prompt = `
@@ -259,13 +258,13 @@ Use clear line breaks between each paragraph.
       `Warning: Warning: This phrase was not found in any of the 9 primary hadith collections. ` +
       `Try rephrasing it more accurately or using known matn keywords.`;
 
-    return res.json({ result });
-  } catch (err) {
-    console.error("❌ GPT fallback error:", err.message);
-    return res.json({ result: `❌ AI fallback failed. Please try again later.` });
+   return res.json({ result });
+    } catch (err) {
+      console.error("❌ GPT fallback error:", err.message);
+      return res.json({ result: `❌ AI fallback failed. Please try again later.` });
+    }
   }
 });
-
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
 app.post('/gpt-commentary', async (req, res) => {
   const englishFull = (req.body.english || '').trim();
