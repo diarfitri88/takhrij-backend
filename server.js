@@ -243,7 +243,7 @@ Your response must be cleanly structured into 4 paragraphs with \\n\\n between e
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "google/gemini-2.0-flash-001",
+        model: "deepseek/deepseek-r1-0528-qwen3-8b:free",
         messages: [
       { role: "system", content: prompt },
       { role: "user", content: q }
