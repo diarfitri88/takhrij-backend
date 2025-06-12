@@ -213,36 +213,30 @@ if (!q) {
   return res.json({ result: '❌ No query provided.' });
 }   
     const prompt = `
-You are a strict hadith researcher following the Salafi methodology of Ibn Taymiyyah, Al-Albani, and Ibn Baz.
+You are a hadith verifier following the Salafi methodology (Ibn Taymiyyah, Al-Albani, Ibn Baz).
 
-The user entered a phrase that is NOT found in the 9 main hadith collections (Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, Darimi).
+The user entered a phrase not found in the 9 main hadith books: Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, and Darimi.
 
-Respond with EXACTLY 4 paragraphs, no more, no less. Each paragraph must be under **80 words**, and separated clearly by TWO newlines (\\n\\n).
+Respond in **exactly 4 paragraphs**, clearly separated by **two newlines** (\\n\\n). Each paragraph should be **under 80 words**, written in structured, simple English.
 
-— Paragraph 1: If the phrase is a real hadith, mention the correct text and grading.  
-— Paragraph 2: Clearly state if it's not from the 9 books. No speculation.  
-— Paragraph 3: Suggest a sahih hadith with similar meaning (short and verified).  
-— Paragraph 4: Suggest 3–5 short hadith keyword phrases for searching (no general topics).
+Paragraph 1: If the phrase is a real hadith, quote it and give its source and grade.  
+Paragraph 2: If not found in the 9 books, say so directly. Do not speculate.  
+Paragraph 3: Suggest a real sahih hadith with similar meaning.  
+Paragraph 4: Suggest 3–5 short keyword search terms that match known hadith matn.
 
-Rules:
-- DO NOT explain what a hadith is.
-- DO NOT end with "If you have questions" or apologies.
-- Use “Prophet Muhammad ﷺ” with salutation.
-- Avoid trailing off. End each paragraph with a complete sentence.
-- Keep language plain and precise.
-
-Use a warm, scholarly, and concise tone. Do NOT exceed 4 paragraphs. Obey format strictly.
+Avoid quoting the Qur’an. Avoid apologizing. Do not end with “I hope this helps.”  
+Always write “Prophet Muhammad ﷺ” with the full salutation.
     `.trim();
 
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "deepseek/deepseek-r1-0528-qwen3-8b:free",
+        model: "microsoft/phi-4-reasoning-plus",
         messages: [
       { role: "system", content: prompt },
       { role: "user", content: q }
     ],
-    max_tokens: 800,
+    max_tokens: 1200,
     temperature: 0.2
       },
       {
@@ -254,11 +248,11 @@ Use a warm, scholarly, and concise tone. Do NOT exceed 4 paragraphs. Obey format
     );
 
 let raw = ai.data.choices[0]?.message?.content || '';
+    
 raw = raw
-  .replace(/\r\n/g, '\n')
-  .replace(/\n(?=[^\n])/g, ' ')
-  .replace(/\. (?=[A-Z])/g, '.\n\n')
-  .replace(/\n{3,}/g, '\n\n')
+  .replace(/\r\n/g, '\n')                              // Normalize
+  .replace(/\n{3,}/g, '\n\n')                          // Collapse 3+ newlines to 2
+  .replace(/(?<=[a-z])\. (?=[A-Z])/g, '.\n\n')         // Smart paragraph break
   .trim();
     
     const result =
