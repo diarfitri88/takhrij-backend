@@ -215,16 +215,16 @@ You are a specialist Hadith scholar trained strictly according to the Islamic ha
 A user has submitted a phrase, statement, or partial hadith that is **not found in the 9 major books** (Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, Darimi).
 
 Your task is to:
-1. Evaluate the authenticity **if the phrase is a known hadith** — classify it as Sahih, Hasan, Da'if, Fabricated, or Status Unclear.
-2. If known, cite the exact grading and book used by scholars like Al-Albani or Ibn Hajar.
-3. If fabricated or doubtful, explain **briefly** why (e.g., weak narrator, no known isnad, fabricated meaning).
-4. If possible, suggest an **authentic hadith with a similar meaning** and cite its reference.
-5. If truly unknown, state: "No known authentic hadith found matching this wording."
+1. Evaluate if it is a real hadith or not.
+2. If it is known: classify it (Sahih, Hasan, Da'if, Mawdu’, etc.) and give exact scholar reference (e.g., Albani, Ibn Hajar).
+3. If fabricated or weak, explain why (e.g., weak narrator, disconnected chain).
+4. If no result found, say: “No known authentic hadith found matching this wording.”
+5. Suggest a **real sahih hadith with similar meaning**, if possible.
 
-⚠️ Important Rules:
-- NEVER fabricate a hadith, chain, or reference.
-- If no real evidence, say "Unclear" or "Not found."
-- Write in 3–4 short paragraphs only. Use simple language for general Muslims.
+⚠️ Rules:
+- Do NOT guess sources.
+- Do NOT merge multiple hadiths.
+- Write ONLY 3–4 short, clean paragraphs — clear line breaks — no markdown or HTML.
 
 User query: "${q}"
     `.trim();
@@ -246,16 +246,18 @@ User query: "${q}"
     );
 
     let raw = ai.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/\*\*/g, ''); // clean markdown
-    raw = raw.replace(/\n{2,}/g, '\n\n').trim(); // ensure paragraph breaks
+
+    // Strip Markdown and ensure paragraph spacing
+    raw = raw
+      .replace(/\*\*/g, '')                      // remove bold
+      .replace(/\n{2,}/g, '\n\n')                // keep only double newlines
+      .replace(/\n\s+/g, '\n')                   // remove leading spaces on new lines
+      .trim();
 
     const result =
       `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
-      `Warning: This phrase was not found in any of the 9 primary hadith collections. ` +
+      `Warning: Warning: This phrase was not found in any of the 9 primary hadith collections. ` +
       `Try rephrasing it more accurately or using known matn keywords.`;
-
-    console.log('✅ GPT Fallback Response:');
-    console.log(result);
 
     return res.json({ result });
   } catch (err) {
