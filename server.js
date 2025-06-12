@@ -402,10 +402,9 @@ Name: [Full name]
 Birth: [Hijri year or estimate]
 Death: [Hijri year]
 Era: [e.g. Sahabi, Tabi'i, Atba' al-Tabi'in]
-Teachers: [List]
-Students: [List]
+Teachers: [List at least 5]
+Students: [List at least 5]
 Grading: [e.g. Thiqa, Da'if, Majhul — with brief explanation from classical hadith scholars]
-Notes: [1–2 lines of scholarly background]
 
 Now, give the biography for this narrator: **${name}**
 `.trim();
@@ -417,8 +416,8 @@ Now, give the biography for this narrator: **${name}**
         messages: [
           { role: 'system', content: prompt },
         ],
-        max_tokens: 600,
-        temperature: 0.3
+        max_tokens: 1000,
+        temperature: 0.0
       },
       {
         headers: {
