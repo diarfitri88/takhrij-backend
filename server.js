@@ -217,7 +217,7 @@ You are a knowledgeable hadith researcher trained in the methodology of Salafi s
 
 The user entered a phrase that was NOT found in the 9 primary hadith books: Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, and Darimi.
 
-Reply in the following format:
+Please produce exactly four paragraphs, separated by a blank line (i.e. two consecutive newlines).
 
 Paragraph 1: If the phrase is an actual known hadith, briefly verify it and state its grading (Sahih, Hasan, Da'if, etc), and give the actual hadith from the 9 main books 
 
@@ -253,12 +253,14 @@ Keep tone warm and clear.
       }
     );
 
-   let raw = ai.data.choices[0]?.message?.content || '';
-  raw = raw.replace(/\r\n/g, '\n');        // normalize Windows line endings
-  raw = raw.replace(/\n{3,}/g, '\n\n');    // collapse 3+ line breaks to exactly 2
-  raw = raw.replace(/\n(?!\n)/g, '\n\n');  // turn every single \n into \n\n
-  raw = raw.trim();
-
+let raw = ai.data.choices[0]?.message?.content || '';
+// 1) Normalize CRLF → LF
+// 2) Collapse any 3+ consecutive line‐feeds into exactly two
+// 3) Trim leading/trailing whitespace
+raw = raw
+  .replace(/\r\n/g, '\n')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
     
     const result =
       `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
