@@ -213,25 +213,37 @@ if (!q) {
   return res.json({ result: '❌ No query provided.' });
 }   
     const prompt = `
-You are a hadith verifier following the Salafi methodology (Ibn Taymiyyah, Al-Albani, Ibn Baz).
+You are a knowledgeable hadith researcher trained in the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, and others.
 
-The user entered a phrase not found in the 9 main hadith books: Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, and Darimi.
+The user entered a phrase that was NOT found in the 9 primary hadith books: Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasai, Ahmad, Malik, and Darimi.
 
-Respond in **exactly 4 paragraphs**, clearly separated by **two newlines** (\\n\\n). Each paragraph should be **under 80 words**, written in structured, simple English.
+Your task is to respond in EXACTLY 4 paragraphs, with each paragraph separated clearly using **two line breaks** (\\n\\n) like this:
 
-Paragraph 1: If the phrase is a real hadith, quote it and give its source and grade.  
-Paragraph 2: If not found in the 9 books, say so directly. Do not speculate.  
-Paragraph 3: Suggest a real sahih hadith with similar meaning.  
-Paragraph 4: Suggest 3–5 short keyword search terms that match known hadith matn.
+Paragraph 1 text.\\n\\nParagraph 2 text.\\n\\nParagraph 3 text.\\n\\nParagraph 4 text.
 
-Avoid quoting the Qur’an. Avoid apologizing. Do not end with “I hope this helps.”  
-Always write “Prophet Muhammad ﷺ” with the full salutation.
+Do NOT use titles like “Paragraph 1”. Do NOT number them.
+
+Respond in plain, scholarly English that general Muslims can understand.
+
+— Paragraph 1: If the phrase is a known hadith in any book, mention it and its grading (Sahih, Hasan, Da’if), and state the matn.
+
+— Paragraph 2: If it’s not in the 9 main books, gently clarify it’s not found in it.
+
+— Paragraph 3: Suggest a similar sahih hadith (only if one exists).
+
+— Paragraph 4: Suggest 3–5 exact short English phrases from known hadith in the 9 main books that users can try searching (matn-based, not thematic).
+
+Use “Prophet Muhammad ﷺ” with the salutation.
+
+Avoid apologizing. Avoid polite closings like “If you have questions...”
+
+Your response must be cleanly structured into 4 paragraphs with \\n\\n between each.
     `.trim();
 
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "microsoft/phi-4-reasoning-plus",
+        model: "deepseek/deepseek-r1-0528:free",
         messages: [
       { role: "system", content: prompt },
       { role: "user", content: q }
@@ -250,9 +262,10 @@ Always write “Prophet Muhammad ﷺ” with the full salutation.
 let raw = ai.data.choices[0]?.message?.content || '';
     
 raw = raw
-  .replace(/\r\n/g, '\n')                              // Normalize
-  .replace(/\n{3,}/g, '\n\n')                          // Collapse 3+ newlines to 2
-  .replace(/(?<=[a-z])\. (?=[A-Z])/g, '.\n\n')         // Smart paragraph break
+  .replace(/\r\n/g, '\n') // normalize CRLF
+  .replace(/\n{3,}/g, '\n\n') // collapse extra breaks
+  .replace(/(?<=[a-z])\. (?=[A-Z])/g, '.\n\n') // add paragraph break between sentences
+  .replace(/\n(?=[^\n])/g, ' ') // remove accidental mid-sentence line breaks
   .trim();
     
     const result =
