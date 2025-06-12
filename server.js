@@ -257,11 +257,10 @@ Use concise academic tone and obey structure exactly.
 let raw = ai.data.choices[0]?.message?.content || '';
     
 raw = raw
-  .replace(/\r\n/g, '\n') // normalize line breaks
-  .replace(/\n{3,}/g, '\n\n') // collapse extra breaks
-  .replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n') // break at sentence end followed by capital
-  .replace(/\n{3,}/g, '\n\n') // prevent over-spacing again
-  .replace(/ +/g, ' ') // remove double spaces
+  .replace(/\\n\\n/g, '\n\n')                         // ← convert literal \n\n to real ones
+  .replace(/\r\n/g, '\n')                             // normalize Windows line endings
+  .replace(/\n{3,}/g, '\n\n')                         // collapse triple newlines
+  .replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n')     // smart paragraph split fallback
   .trim();
     
     const result =
