@@ -254,16 +254,16 @@ Use a warm, scholarly, and concise tone. Do NOT exceed 4 paragraphs. Obey format
     );
 
 let raw = ai.data.choices[0]?.message?.content || '';
-// 1) Normalize CRLF → LF
-// 2) Collapse any 3+ consecutive line‐feeds into exactly two
-// 3) Trim leading/trailing whitespace
 raw = raw
   .replace(/\r\n/g, '\n')
+  .replace(/\n(?=[^\n])/g, ' ')
+  .replace(/\. (?=[A-Z])/g, '.\n\n')
   .replace(/\n{3,}/g, '\n\n')
   .trim();
     
     const result =
       `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
+      
       `Warning: Warning: This phrase was not found in any of the 9 primary hadith collections. ` +
       `Try rephrasing it more accurately or using known matn keywords.`;
 
