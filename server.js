@@ -247,7 +247,7 @@ Keep tone warm and clear.
       { role: "user", content: q }
     ],
     max_tokens: 600,
-    temperature: 0.2
+    temperature: 0.1
       },
       {
         headers: {
