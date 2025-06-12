@@ -243,8 +243,8 @@ Use clear line breaks between each paragraph.
         model: "openai/gpt-4o-mini",
         messages: [ { role: "system", content: prompt },
   { role: "user", content: `Phrase or statement to verify:\n"${q}"` }],
-        max_tokens: 600,
-        temperature: 0.1
+        max_tokens: 500,
+        temperature: 0.2
       },
       {
         headers: {
