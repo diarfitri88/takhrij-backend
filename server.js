@@ -206,7 +206,7 @@ app.post("/search-hadith", async (req, res) => {
     }).join("\n");
     return res.json({ result });
  } else {
-    
+      }
 // ─── GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
     const prompt = `
