@@ -234,16 +234,16 @@ Always write “Prophet Muhammad ﷺ” respectfully with the salutation in Arab
 Keep tone warm and clear.
     `.trim();
 
-    const userPrompt = `Phrase or statement to verify:\n"${q}"`;
-
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
         model: "openai/gpt-4o-mini",
-        messages: [ { role: "system", content: prompt },
-  { role: "user", content: `Phrase or statement to verify:\n"${q}"` }],
-        max_tokens: 600,
-        temperature: 0.2
+        messages: [
+      { role: "system", content: prompt },
+      { role: "user", content: q }
+    ],
+    max_tokens: 600,
+    temperature: 0.2
       },
       {
         headers: {
@@ -254,8 +254,10 @@ Keep tone warm and clear.
     );
 
    let raw = ai.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/\*\*/g, ''); // Remove markdown
-    raw = raw.replace(/\n{2,}/g, '\n\n').trim(); // Ensure paragraph spacing
+    raw = raw.replace(/\*\*/g, '');
+raw = raw.replace(/\r?\n\r?\n/g, '\n\n');
+raw = raw.replace(/\r?\n/g, '\n');
+raw = raw.trim();
     
     const result =
       `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
