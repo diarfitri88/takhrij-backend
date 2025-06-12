@@ -382,7 +382,68 @@ Be concise, precise, and avoid fabricating any sources or narrators.`;
     return res.json(errorPayload);
   }
 });
+// ─── 9) NARRATOR BIO ───────────────────────────────────────────────────────────
+app.post('/narrator-bio', async (req, res) => {
+  try {
+    const name = (req.body.name || '').trim();
 
-// ─── 9) START SERVER ───────────────────────────────────────────────────────────
+    if (!name) {
+      return res.json({ error: 'No narrator name provided.' });
+    }
+
+    const prompt = `
+You are a Salafi-trained hadith scholar. The user will give you the name of a narrator. Respond with a detailed biography in structured format.
+
+Only include confirmed historical narrators found in major hadith chains. If the name is invalid or ambiguous, say "Narrator unclear."
+
+Use this exact format:
+
+Name: [Full name]
+Birth: [Hijri year or estimate]
+Death: [Hijri year]
+Era: [e.g. Sahabi, Tabi'i, Atba' al-Tabi'in]
+Teachers: [List]
+Students: [List]
+Grading: [e.g. Thiqa, Da'if, Majhul — with brief explanation from classical hadith scholars]
+Notes: [1–2 lines of scholarly background]
+
+Now, give the biography for this narrator: **${name}**
+`.trim();
+
+    const ai = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: 'deepseek/deepseek-r1-0528:free', 
+        messages: [
+          { role: 'system', content: prompt },
+        ],
+        max_tokens: 600,
+        temperature: 0.3
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    let raw = ai.data.choices[0]?.message?.content || '';
+
+    raw = raw
+      .replace(/\\n\\n/g, '\n\n')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return res.json({ bio: raw });
+
+  } catch (err) {
+    console.error('❌ Narrator bio error:', err.message);
+    return res.json({ error: 'Narrator bio fetch failed.' });
+  }
+});
+
+// ─── 10) START SERVER ───────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Takhrij backend running on port ${PORT}`));
