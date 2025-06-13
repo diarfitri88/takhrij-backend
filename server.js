@@ -386,37 +386,40 @@ Be concise, precise, and avoid fabricating any sources or narrators.`;
 app.post('/narrator-bio', async (req, res) => {
   try {
     const name = (req.body.name || '').trim();
-
     if (!name) {
-      return res.json({ error: 'No narrator name provided.' });
+      return res.json({ bio: 'No narrator name provided.' });
     }
 
-    const prompt = `
-You are a Salafi-trained hadith scholar. The user will give you the name of a narrator. Respond with a detailed biography in structured format.
+    // 1) System prompt: instructions only, no name interpolation
+    const systemPrompt = `
+You are a Salafi-trained hadith scholar. The user will give you the name of a narrator. Respond with a detailed biography in structured Markdown with **bold labels only**—no code fences.
 
-Only include confirmed historical narrators found in major hadith chains. If the name is invalid or ambiguous, say "Narrator unclear."
+Only include confirmed historical narrators.  
+If uncertain or no reliable chains exist, respond exactly:
+Narrator unclear.
 
-Use this exact format:
+Use exactly this format:
+**Name:** [Full name]  
+**Birth:** [Hijri year or estimate]  
+**Death:** [Hijri year]  
+**Era:** [e.g. Sahabi, Tabi'i, Atba' al-Tabi'in]  
+**Teachers:** [List at least 5]  
+**Students:** [List at least 5]  
+**Grading:** [e.g. Thiqa, Da'if, Majhul — with brief explanation]
+    `.trim();
 
-Name: [Full name]
-Birth: [Hijri year or estimate]
-Death: [Hijri year]
-Era: [e.g. Sahabi, Tabi'i, Atba' al-Tabi'in]
-Teachers: [List at least 5]
-Students: [List at least 5]
-Grading: [e.g. Thiqa, Da'if, Majhul — with brief explanation from classical hadith scholars]
-
-Now, give the biography for this narrator: **${name}**
-`.trim();
+    // 2) Send the narrator’s name as the user message
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: name }
+    ];
 
     const ai = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'deepseek/deepseek-r1-0528:free', 
-        messages: [
-          { role: 'system', content: prompt },
-        ],
-        max_tokens: 1000,
+        model: 'deepseek/deepseek-r1-0528:free',
+        messages,
+        max_tokens: 1500,
         temperature: 0.0
       },
       {
@@ -427,19 +430,14 @@ Now, give the biography for this narrator: **${name}**
       }
     );
 
+    // 3) Don’t strip bold markers—just remove code fences if they appear
     let raw = ai.data.choices[0]?.message?.content || '';
-
-    raw = raw
-      .replace(/\\n\\n/g, '\n\n')
-      .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    raw = raw.replace(/```[\s\S]*?```/g, '').trim();
 
     return res.json({ bio: raw });
-
   } catch (err) {
     console.error('❌ Narrator bio error:', err.message);
-    return res.json({ error: 'Narrator bio fetch failed.' });
+    return res.json({ bio: 'Error fetching biography.' });
   }
 });
 
