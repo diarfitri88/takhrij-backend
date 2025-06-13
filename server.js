@@ -238,7 +238,7 @@ Use concise academic tone and obey structure exactly.
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: "deepseek/deepseek-r1-0528:free",
+        model: 'deepseek/deepseek-r1-0528:free',
         messages: [
       { role: "system", content: prompt },
       { role: "user", content: q }
@@ -420,7 +420,7 @@ Use exactly this format:
     const ai = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'deepseek/deepseek-r1-distill-qwen-14b:free',
+        model: 'deepseek/deepseek-r1-0528:free',
         messages,
         max_tokens: 1500,
         temperature: 0.0
