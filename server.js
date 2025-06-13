@@ -403,8 +403,11 @@ Use exactly this format:
 **Birth:** [Hijri year or estimate]  
 **Death:** [Hijri year]  
 **Era:** [e.g. Sahabi, Tabi'i, Atba' al-Tabi'in]  
+
 **Teachers:** [List at least 5]  
-**Students:** [List at least 5]  
+
+**Students:** [List at least 5] 
+
 **Grading:** [e.g. Thiqa, Da'if, Majhul — with brief explanation]
     `.trim();
 
