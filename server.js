@@ -417,7 +417,7 @@ Use exactly this format:
     const ai = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'deepseek/deepseek-r1-0528:free',
+        model: 'openai/gpt-4o-mini',
         messages,
         max_tokens: 1500,
         temperature: 0.0
