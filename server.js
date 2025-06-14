@@ -238,7 +238,7 @@ Use concise academic tone and obey structure exactly.
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: 'deepseek/deepseek-r1-0528:free',
+        model: 'deepseek/deepseek-chat-v3-0324:free',
         messages: [
       { role: "system", content: prompt },
       { role: "user", content: q }
@@ -408,11 +408,11 @@ Use exactly this format:
 
 **Students:** [List at least 3-5] 
 
-**Grading (Ibn Ḥajar):**  
-– **Thiqah** — declared reliable by Ibn Ḥajar in *Taqrīb al-Tahḏīb*.  
-– **Hasan** — judged good by Ibn Ḥajar in *Taqrīb al-Tahḏīb*.  
-– **Daʿīf** — deemed weak by Ibn Ḥajar in *Nuzhat al-Nazar* (brief reason).  
-– **Majhūl** — status unknown per Ibn Ḥajar in *Taqrīb al-Tahḏīb*.
+**Grading:**  Give the grading based on Ibn Hajar criteria in Taqrib al-Tahdib
+– **Thiqah** — declared reliable by Ibn Hajar in *Taqrib al-Tahdib*.  
+– **Hasan** — judged good by Ibn Hajar in *Taqrīb al-Tahdib*.  
+– **Daʿif** — deemed weak by Ibn Hajar in *Nuzhat al-Nazar* (brief reason).  
+– **Majhul** — status unknown per Ibn Hajar in *Taqrib al-Tahdib*.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
@@ -424,7 +424,7 @@ Use exactly this format:
     const ai = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'deepseek/deepseek-r1-0528:free',
+        model: 'deepseek/deepseek-chat-v3-0324:free',
         messages,
         max_tokens: 800,
         temperature: 0.0
