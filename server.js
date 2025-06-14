@@ -219,15 +219,15 @@ The user submitted a phrase that may NOT be found in the 9 primary hadith collec
 
 You MUST write exactly 4 short paragraphs.
 
-Each paragraph must be followed by **two real line breaks**, like this:
+Each paragraph must be followed by **two real line breaks**, use this exact format like this:
 
-1. If the phrase is authentic, provide the exact hadith and its grading.
+If the phrase is authentic, provide the exact hadith and its grading.
 
-2. If the hadith is not found in the 9 books, say so clearly with no ambiguity.  
+If the hadith is not found in the 9 books, say so clearly with no ambiguity.  
 
-3. Suggest 1 sahih hadith with similar meaning and reference.  
+Suggest 1 sahih hadith with similar meaning and reference.  
 
-4. Suggest 3–5 exact **matn-style** English keywords suitable for search that is in the 9 hadith collections (e.g., “moon split”, “smiling is charity”).
+Suggest 3–5 exact **matn-style** English keywords suitable for search that is in the 9 hadith collections (e.g., “moon split”, “smiling is charity”).
 
 Strict rules:
 - Use the name “Prophet Muhammad ﷺ” with the salutation.  
