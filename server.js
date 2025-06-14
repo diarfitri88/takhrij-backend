@@ -264,12 +264,13 @@ let raw = ai.data.choices[0]?.message?.content || '';
 raw = raw.replace(/\r\n/g, '\n');
 raw = raw.replace(/^\s+/gm, ''); 
 raw = raw.replace(/\n{3,}/g, '\n\n');
-raw = raw.replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n');
+raw = raw.replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n'); 
+raw = raw.replace(/\n{2,}/g, '\n\n');                    
+raw = raw.replace(/([^\n])\n([^\n])/g, '$1 $2');          
 raw = raw.trim();
     
     const result =
         `---\nEnglish Matn:\n${raw}\n\n` +
-  `Reference: AI Generated\n` +
   `Warning: This phrase/word was not found in any of the 9 primary hadith collections. Try rephrasing it more accurately or using known matn keywords.\n` +
   `Search tip: Enter specific keywords (minimum 3 letters each) separated by spaces; common words like "and", "the", "of" are ignored, and fuzzy matching helps catch close spellings.`;
 
