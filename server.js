@@ -243,7 +243,7 @@ Use concise academic tone and obey structure exactly.
       { role: "system", content: prompt },
       { role: "user", content: q }
     ],
-    max_tokens: 600,
+    max_tokens: 1200,
     temperature: 0.0
       },
       {
@@ -402,13 +402,13 @@ Use exactly this format:
 **Name:** [Full name]  
 **Birth:** [Hijri year or estimate]  
 **Death:** [Hijri year]  
-**Era:** [e.g. Sahabi, Tabi'i, Atba' al-Tabi'in]  
+**Era:** [e.g. Sahabi, Tabi'i, Tabi' al-Tabi'in]  
 
 **Teachers:** [List at least 5]  
 
 **Students:** [List at least 5] 
 
-**Grading:** [e.g. Thiqa, Da'if, Majhul — with brief explanation]
+**Grading:** [e.g. Thiqa, Da'if, Majhul — with brief explanation from classical and hadith scholars]
     `.trim();
 
     // 2) Send the narrator’s name as the user message
@@ -422,7 +422,7 @@ Use exactly this format:
       {
         model: 'deepseek/deepseek-r1-0528:free',
         messages,
-        max_tokens: 1500,
+        max_tokens: 600,
         temperature: 0.0
       },
       {
