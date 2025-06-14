@@ -262,6 +262,7 @@ Respond in a clear, scholarly tone. Paragraph structure and spacing must be exac
 let raw = ai.data.choices[0]?.message?.content || '';
     
 raw = raw.replace(/\r\n/g, '\n');
+raw = raw.replace(/^\s+/gm, ''); 
 raw = raw.replace(/\n{3,}/g, '\n\n');
 raw = raw.replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n');
 raw = raw.trim();
