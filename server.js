@@ -217,12 +217,17 @@ You are a hadith researcher trained on the Salafi methodology, including the wor
 
 The user submitted a phrase that may NOT be found in the 9 primary hadith collections: Sahih Bukhari, Sahih Muslim, Sunan Abu Dawood, Jami' at-Tirmidhi, Sunan Ibn Majah, Sunan an-Nasa'i, Musnad Ahmad, Muwatta Malik, and Sunan ad-Darimi. The phrase may be misquoted or inaccurately phrased.
 
-You MUST write exactly 4 short paragraphs. Each paragraph must end with a full sentence and be followed by TWO line breaks (\\n\\n).
+You MUST write exactly 4 short paragraphs.
 
-1. If the phrase is authentic, provide the exact hadith and its grading.  
+Each paragraph must be followed by **two real line breaks**, like this:
+
+1. If the phrase is authentic, provide the exact hadith and its grading.
+
 2. If the hadith is not found in the 9 books, say so clearly with no ambiguity.  
+
 3. Suggest 1 sahih hadith with similar meaning and reference.  
-4. Suggest 3–5 exact **matn-style** Arabic or English keywords suitable for search (e.g., “moon split”, “smiling is charity”).
+
+4. Suggest 3–5 exact **matn-style** English keywords suitable for search that is in the 9 hadith collections (e.g., “moon split”, “smiling is charity”).
 
 Strict rules:
 - Use the name “Prophet Muhammad ﷺ” with the salutation.  
@@ -410,13 +415,11 @@ Use this exact format:
 
 **Students:** [List at least 3–5 known students]  
 
-**Grading:** Provide the grading based only on Ibn Hajar’s work in *Taqrib al-Tahdib* and related books:
-– **Thiqah** — declared reliable by Ibn Hajar.  
-– **Hasan** — judged good by Ibn Hajar.  
-– **Daʿif** — deemed weak by Ibn Hajar, with a short reason.  
-– **Majhul** — status unknown or not mentioned by Ibn Hajar.
+**Scholarly Remarks:** Summarize what other major scholars said (e.g. Al-Dhahabi, Yahya ibn Ma’in, Al-Nasa’i, Ibn Sa’d, Ibn Hajar, al-Albani).  
+If any disagreement exists, explain clearly but briefly.  
+End with a clarifying statement if Ibn Hajar maintained his grading in Taqrib al-Tahdib despite criticism.
 
-Now, give the biography for this narrator: **${name}**
+Now return the full biography for this narrator: **\${name}**
     `.trim();
 
     // 2) Send the narrator’s name as the user message
