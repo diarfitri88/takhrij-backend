@@ -243,8 +243,8 @@ Use concise academic tone and obey structure exactly.
       { role: "system", content: prompt },
       { role: "user", content: q }
     ],
-    max_tokens: 1200,
-    temperature: 0.1
+    max_tokens: 600,
+    temperature: 0.0
       },
       {
         headers: {
