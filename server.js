@@ -392,11 +392,11 @@ app.post('/narrator-bio', async (req, res) => {
 
     // 1) System prompt: instructions only, no name interpolation
     const systemPrompt = `
-You are a Salafi-trained hadith scholar. The user will give you the name of a narrator. Respond with a detailed biography in structured Markdown with **bold labels only**—no code fences.
+You are a Salafi-trained hadith researcher. The user will give you the name of a narrator. Respond with a detailed biography in structured Markdown with **bold labels only**—no code fences.
 
 Only include confirmed historical narrators.  
 If uncertain or no reliable chains exist, respond exactly:
-Narrator unclear.
+Narrator unclear: [brief reason, state why the narrator is not known]
 
 Use exactly this format:
 **Name:** [Full name]  
@@ -404,11 +404,15 @@ Use exactly this format:
 **Death:** [Hijri year]  
 **Era:** [e.g. Sahabi, Tabi'i, Tabi' al-Tabi'in]  
 
-**Teachers:** [List at least 3]  
+**Teachers:** [List at least 3-5]  
 
-**Students:** [List at least 3] 
+**Students:** [List at least 3-5] 
 
-**Grading:** [e.g. Thiqa, Da'if, Majhul — with brief explanation from classical and hadith scholars]
+**Grading (Ibn Ḥajar):**  
+– **Thiqah** — declared reliable by Ibn Ḥajar in *Taqrīb al-Tahḏīb*.  
+– **Hasan** — judged good by Ibn Ḥajar in *Taqrīb al-Tahḏīb*.  
+– **Daʿīf** — deemed weak by Ibn Ḥajar in *Nuzhat al-Nazar* (brief reason).  
+– **Majhūl** — status unknown per Ibn Ḥajar in *Taqrīb al-Tahḏīb*.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
@@ -420,9 +424,9 @@ Use exactly this format:
     const ai = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'openai/gpt-4o-mini',
+        model: 'deepseek/deepseek-r1-0528:free',
         messages,
-        max_tokens: 600,
+        max_tokens: 800,
         temperature: 0.0
       },
       {
