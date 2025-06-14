@@ -267,9 +267,10 @@ raw = raw.replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n');
 raw = raw.trim();
     
     const result =
-        `---\nEnglish Matn:\n${raw}\n\n` +
-  `Reference: AI Generated\n` +
+  `---\nEnglish Matn:\n${raw}\n\n` +
+  
   `Warning: This phrase/word was not found in any of the 9 primary hadith collections. Try rephrasing it more accurately or using known matn keywords.\n` +
+  
   `Search tip: Enter specific keywords (minimum 3 letters each) separated by spaces; common words like "and", "the", "of" are ignored, and fuzzy matching helps catch close spellings.`;
 
    return res.json({ result });
