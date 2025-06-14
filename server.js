@@ -404,9 +404,9 @@ Use exactly this format:
 **Death:** [Hijri year]  
 **Era:** [e.g. Sahabi, Tabi'i, Tabi' al-Tabi'in]  
 
-**Teachers:** [List at least 5]  
+**Teachers:** [List at least 3]  
 
-**Students:** [List at least 5] 
+**Students:** [List at least 3] 
 
 **Grading:** [e.g. Thiqa, Da'if, Majhul — with brief explanation from classical and hadith scholars]
     `.trim();
@@ -420,7 +420,7 @@ Use exactly this format:
     const ai = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'deepseek/deepseek-r1-0528:free',
+        model: 'openai/gpt-4o-mini',
         messages,
         max_tokens: 600,
         temperature: 0.0
