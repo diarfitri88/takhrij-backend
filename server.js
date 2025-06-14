@@ -261,22 +261,16 @@ Respond in a clear, scholarly tone. Paragraph structure and spacing must be exac
 
 let raw = ai.data.choices[0]?.message?.content || '';
     
-raw = raw
-  .replace(/\\n\\n/g, '\n\n')
-  .replace(/\r\n/g, '\n')
-  .replace(/\n{3,}/g, '\n\n')
-  .replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n')
-  .split('\n\n')  // Split into paragraphs
-  .map(para => para.trim())  // Clean each paragraph
-  .filter(para => para)  // Remove empty paragraphs
-  .join('\n\n')  // Rejoin with consistent spacing
-  .trim();
+raw = raw.replace(/\r\n/g, '\n');
+raw = raw.replace(/\n{3,}/g, '\n\n');
+raw = raw.replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n');
+raw = raw.trim();
     
     const result =
-      `---\nEnglish Matn: ${raw}\nReference: AI Generated\n` +
-      
-      `Warning: Warning: This phrase was not found in any of the 9 primary hadith collections. ` +
-      `Try rephrasing it more accurately or using known matn keywords.`;
+        `---\nEnglish Matn:\n${raw}\n\n` +
+  `Reference: AI Generated\n` +
+  `Warning: This phrase/word was not found in any of the 9 primary hadith collections. Try rephrasing it more accurately or using known matn keywords.\n` +
+  `Search tip: Enter specific keywords (minimum 3 letters each) separated by spaces; common words like "and", "the", "of" are ignored, and fuzzy matching helps catch close spellings.`;
 
    return res.json({ result });
     } catch (err) {
