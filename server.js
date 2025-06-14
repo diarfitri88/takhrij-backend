@@ -262,10 +262,14 @@ Respond in a clear, scholarly tone. Paragraph structure and spacing must be exac
 let raw = ai.data.choices[0]?.message?.content || '';
     
 raw = raw
-  .replace(/\\n\\n/g, '\n\n')                          // ← THIS is the missing step
-  .replace(/\r\n/g, '\n')                              // Normalize Windows line endings
-  .replace(/\n{3,}/g, '\n\n')                          // Collapse accidental triple breaks
-  .replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n')      // Smart fallback for new paragraphs
+  .replace(/\\n\\n/g, '\n\n')
+  .replace(/\r\n/g, '\n')
+  .replace(/\n{3,}/g, '\n\n')
+  .replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n')
+  .split('\n\n')  // Split into paragraphs
+  .map(para => para.trim())  // Clean each paragraph
+  .filter(para => para)  // Remove empty paragraphs
+  .join('\n\n')  // Rejoin with consistent spacing
   .trim();
     
     const result =
