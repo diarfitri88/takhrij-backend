@@ -193,9 +193,7 @@ app.post("/search-hadith", async (req, res) => {
       else if (typeof h.body === "string") en = h.body;
 
       const ar  = h.arabic || "[No Arabic]";
-      const num = h.hadithnumber || h.id || h.number || "Unknown";
-      const ref = `${names[h.collection] || "Unknown"} ${num}`;
-
+      const ref = h.reference || `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number || "Unknown"}`;
        // Mutawatir Check
   const mutawatirInfo = checkMutawatir(ref);
   const classification = mutawatirInfo
