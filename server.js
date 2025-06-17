@@ -99,7 +99,7 @@ async function loadHadiths() {
     const results = await Promise.all(Object.values(urls).map(u => axios.get(u)));
     const collections = Object.keys(urls);
     results.forEach((res, i) => {
-      const arr = Array.isArray(res.data.hadiths) ? res.data.hadiths : [];
+      const arr = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.hadiths) ? res.data.hadiths : []);
       const mapped = arr.map(h => ({ ...h, collection: collections[i] }));
       switch (collections[i]) {
         case "bukhari":  bukhariHadiths  = mapped; break;
