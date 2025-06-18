@@ -84,7 +84,7 @@ let malikHadiths = [], ibnMajahHadiths = [], darimiHadiths = [], ahmedHadiths = 
 
 const urls = {
   bukhari:   "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/bukhari.json?alt=media&token=1276aa2e-2ab9-4a62-851a-c82e85e2d8e1",
-  muslim:    "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/muslim.json?alt=media&token=67ea3a18-1d1e-4edc-816a-e9c66d89120b",
+  muslim:    "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/muslim.json?alt=media&token=7058eff8-198e-465a-ab66-9d32f53d4bc1",
   tirmidhi:  "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/tirmidhi.json?alt=media&token=7df7efae-3c6a-4122-8f24-ea5f564c5888",
   nasai:     "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/nasai.json?alt=media&token=a478d55f-2f82-429f-9342-927e63cb37f8",
   malik:     "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/malik.json?alt=media&token=4a721b08-df53-4687-87a4-56c04d142b66",
@@ -193,14 +193,20 @@ app.post("/search-hadith", async (req, res) => {
       else if (typeof h.body === "string") en = h.body;
 
       const ar  = h.arabic || "[No Arabic]";
-      const ref = h.reference || `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number || "Unknown"}`;
+      const mainRef = h.reference || `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number || "Unknown"}`;
+const bookNumber = h.bookId || h.bookNumber || h.metadata?.bookNumber || null;
+const inBookRef = h.idInBook || h.hadithnumber || h.number || h.metadata?.hadithNumber || null;
+
+const fullRef = (bookNumber && inBookRef)
+  ? `${mainRef} (Book ${bookNumber}, Hadith ${inBookRef})`
+  : mainRef;
        // Mutawatir Check
   const mutawatirInfo = checkMutawatir(ref);
   const classification = mutawatirInfo
     ? `Classification: Mutawatir\nNotes: ${mutawatirInfo.notes}`
     : `Classification: Ahad`;
 
-      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\n${classification}`;
+      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${fullRef}\n${classification}`;
     }).join("\n");
     return res.json({ result });
  } else {
