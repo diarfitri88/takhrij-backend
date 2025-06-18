@@ -197,10 +197,11 @@ app.post("/search-hadith", async (req, res) => {
        // Mutawatir Check
   const mutawatirInfo = checkMutawatir(ref);
   const classification = mutawatirInfo
-    ? Classification: Mutawatir\nNotes: ${mutawatirInfo.notes}
-    : Classification: Ahad;
+  ? `Classification: Mutawatir\nNotes: ${mutawatirInfo.notes}`
+  : `Classification: Ahad`;
 
-      return ---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\n${classification};
+
+      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\n${classification}`;
     }).join("\n");
     return res.json({ result });
  } else {
