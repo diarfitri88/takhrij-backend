@@ -134,6 +134,11 @@ const names = {
   abudawud:  "Sunan Abu Dawood"
 };
 
+const refFormatters = {
+  muslim: h => `Sahih Muslim ${h.hadithnumber} (Book ${h.book}, Hadith ${h.id})`,
+  default: h => `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number}`
+};
+
 // ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
 let fuse;
 function initFuse() {
@@ -193,7 +198,9 @@ app.post("/search-hadith", async (req, res) => {
       else if (typeof h.body === "string") en = h.body;
 
       const ar  = h.arabic || "[No Arabic]";
-      const ref = h.reference || `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number || "Unknown"}`;
+      const ref = h.reference
+  ? h.reference
+  : (refFormatters[h.collection] || refFormatters.default)(h);
        // Mutawatir Check
   const mutawatirInfo = checkMutawatir(ref);
   const classification = mutawatirInfo
