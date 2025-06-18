@@ -185,31 +185,29 @@ app.post("/search-hadith", async (req, res) => {
 
   if (matches.length) {
     const result = matches.map(h => {
-      let en = "";
-      if (typeof h.english === "string") en = h.english;
-      else if (h.english && typeof h.english === "object")
-        en = h.english.text || h.english.body || "";
-      else if (typeof h.text === "string") en = h.text;
-      else if (typeof h.body === "string") en = h.body;
+  let en = "";
+  if (typeof h.english === "string") en = h.english;
+  else if (h.english && typeof h.english === "object")
+    en = h.english.text || h.english.body || "";
+  else if (typeof h.text === "string") en = h.text;
+  else if (typeof h.body === "string") en = h.body;
 
-      const ar  = h.arabic || "[No Arabic]";
-      const mainRef = h.reference || `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number || "Unknown"}`;
-const bookNumber = h.bookId || h.bookNumber || h.metadata?.bookNumber || null;
-const inBookRef = h.idInBook || h.hadithnumber || h.number || h.metadata?.hadithNumber || null;
+  const ar = h.arabic || "[No Arabic]";
+  const ref = h.reference || `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number || "Unknown"}`;
+  const bookNumber = h.bookId || h.bookNumber || h.metadata?.bookNumber || null;
+  const inBookRef = h.idInBook || h.hadithnumber || h.number || h.metadata?.hadithNumber || null;
 
-const fullRef = (bookNumber && inBookRef)
-  ? `${mainRef} (Book ${bookNumber}, Hadith ${inBookRef})`
-  : mainRef;
-       // Mutawatir Check
+  const fullRef = (bookNumber && inBookRef)
+    ? `${ref} (Book ${bookNumber}, Hadith ${inBookRef})`
+    : ref;
+
   const mutawatirInfo = checkMutawatir(ref);
   const classification = mutawatirInfo
     ? `Classification: Mutawatir\nNotes: ${mutawatirInfo.notes}`
     : `Classification: Ahad`;
 
-      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${fullRef}\n${classification}`;
-    }).join("\n");
-    return res.json({ result });
- } else {
+  return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${fullRef}\n${classification}`;
+}).join("\n");
 // ─── GPT FALLBACK ─────────────────────────────────────────────────────────
   try {
    const q = (req.body.query || '').trim();
