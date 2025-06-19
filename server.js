@@ -135,7 +135,6 @@ const names = {
 };
 
 const refFormatters = {
-  muslim: h => `Sahih Muslim ${h.hadithnumber} (Book ${h.book}, Hadith ${h.id})`,
   default: h => `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number}`
 };
 
