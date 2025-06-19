@@ -337,7 +337,7 @@ app.post('/gpt-commentary', async (req, res) => {
     - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
     - Only classify a hadith as Qudsi, Marfu', or Mawquf if the chain or text explicitly indicates it. If unclear, say: 'Classification of Qudsi, Marfu', or Mawquf not specified.
 
-Be concise, precise, and avoid fabricating any sources or narrators.`;
+    Finally, conclude the Evaluation section with a separate paragraph titled "Fiqh Ruling:", summarizing the legal ruling derived from this hadith based on Salafi fiqh methodology but don't mention the word 'salafi' (e.g., wajib, mustahabb, makruh, haram). If scholars differ, briefly mention the strongest opinion and why. Be concise, precise, and avoid fabricating any sources or narrators`;
 
   const userPrompt =
     `Reference: ${reference}\n` +
