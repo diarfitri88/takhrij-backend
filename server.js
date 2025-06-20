@@ -334,12 +334,16 @@ app.post('/gpt-commentary', async (req, res) => {
     - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**, if the hadith is widely narrated by multiple companions across different chains, mention: 'Classification: Mutawatir'. Otherwise, consider it Ahad.
     - If a narrator's status is unknown, say: "Status of [name] is unclear."
     - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
+  
   Only classify a hadith as Qudsi, Marfu', or Mawquf if it is clearly indicated by its wording or attribution:
-
-- **Hadith Qudsi**: If the Arabic or English matn begins with phrases like "قال الله" or "Allah said", or if it reports divine speech from Allah via the Prophet ﷺ, classify it as **Hadith Qudsi**. This classification overrides others (e.g., it is both Marfu' and Qudsi, but call it Qudsi).
-- **Marfu'**: A statement clearly attributed to the Prophet ﷺ.
-- **Mawquf**: A statement clearly attributed to a Companion.
-  If unclear after reasonable effort, say: 'Classification of Qudsi, Marfu', or Mawquf not specified.'
+- **Hadith Qudsi**: If the Prophet is reporting **speech of Allah** — either directly (“Allah said”) or indirectly:
+   - "My Lord said"
+   - "The Prophet narrated from his Lord"
+   - "It is reported from Allah"
+   - "Allah, the Blessed and Exalted, said..."
+- **Marfu’**: Statement directly traced to the Prophet ﷺ.
+- **Mawquf**: Statement only traced to a Companion.
+- If unclear after reasonable effort, say: "Classification of Qudsi, Marfu’, or Mawquf not specified."
 
     Finally, conclude the Evaluation section with a separate paragraph titled "Fiqh Ruling:", summarizing the legal ruling derived from this hadith based on known Salafi fiqh principles (e.g., Ibn Baz, Ibn Uthaymeen) without naming “Salafi”. (e.g., wajib, mustahabb, makruh, haram). If scholars differ, briefly mention the strongest opinion and why. Be concise, precise, and avoid fabricating any sources or narrators`;
 
