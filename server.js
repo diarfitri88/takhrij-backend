@@ -335,12 +335,12 @@ app.post('/gpt-commentary', async (req, res) => {
     - If a narrator's status is unknown, say: "Status of [name] is unclear."
     - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
     Only classify a hadith as Qudsi, Marfu', or Mawquf if it is explicitly clear from the **text** or **chain**. For example:
-  - Qudsi: Begins with phrases like “Allah said...” or the Prophet ﷺ narrates from Allah
+  - Qudsi: If the hadith begins with “Allah said” (e.g., قال الله), or is clearly a divine quote reported by the Prophet ﷺ, classify it as “Hadith Qudsi”. 
   - Marfu’: Statement clearly traced to the Prophet ﷺ
   - Mawquf: Statement clearly traced only to a companion
   If unclear after reasonable effort, say: 'Classification of Qudsi, Marfu', or Mawquf not specified.'
 
-    Finally, conclude the Evaluation section with a separate paragraph titled "Fiqh Ruling:", summarizing the legal ruling derived from this hadith based on Salafi fiqh methodology but don't mention the word 'salafi' (e.g., wajib, mustahabb, makruh, haram). If scholars differ, briefly mention the strongest opinion and why. Be concise, precise, and avoid fabricating any sources or narrators`;
+    Finally, conclude the Evaluation section with a separate paragraph titled "Fiqh Ruling:", summarizing the legal ruling derived from this hadith based on known Salafi fiqh principles (e.g., Ibn Baz, Ibn Uthaymeen) without naming “Salafi”. (e.g., wajib, mustahabb, makruh, haram). If scholars differ, briefly mention the strongest opinion and why. Be concise, precise, and avoid fabricating any sources or narrators`;
 
   const userPrompt =
     `Reference: ${reference}\n` +
