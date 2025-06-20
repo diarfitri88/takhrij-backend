@@ -336,11 +336,11 @@ app.post('/gpt-commentary', async (req, res) => {
     - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
   
   Only classify a hadith as Qudsi, Marfu', or Mawquf if it is clearly indicated by its wording or attribution:
-- **Hadith Qudsi**: If the Prophet is reporting **speech of Allah** — either directly (“Allah said”) or indirectly:
-   - "My Lord said"
-   - "The Prophet narrated from his Lord"
-   - "It is reported from Allah"
-   - "Allah, the Blessed and Exalted, said..."
+- **Hadith Qudsi**: Classify as “Hadith Qudsi” if the Prophet is narrating words from Allah (ﷻ), whether directly or indirectly. This includes:
+  • If the hadith begins with “Allah said” (e.g., قال الله).
+  • If it says: “The Prophet narrated from his Lord” (e.g., يرويه عن ربه).
+  • Phrases like: “My Lord said...”, “It is reported from Allah...”, or “Allah, the Blessed and Exalted, said...”.
+  These are not from the Qur’an, but are divine speech reported through the Prophet ﷺ.
 - **Marfu’**: Statement directly traced to the Prophet ﷺ.
 - **Mawquf**: Statement only traced to a Companion.
 - If unclear after reasonable effort, say: "Classification of Qudsi, Marfu’, or Mawquf not specified."
