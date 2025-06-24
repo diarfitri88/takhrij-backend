@@ -333,6 +333,7 @@ app.post('/gpt-commentary', async (req, res) => {
     - If there is a known disconnection (e.g., mursal, missing link), say it clearly.
     - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**, if the hadith is widely narrated by multiple companions across different chains, mention: 'Classification: Mutawatir'. Otherwise, consider it Ahad.
     - Evaluate whether each narrator could realistically have met the next in the chain based on known lifespans. If uncertain, classify as munqati’, mursal, or mu‘dal accordingly and explain why.
+    - Evaluate the continuity of the chain: If you recognize a clear lifespan gap—e.g. one narrator died decades before the next was born—explicitly call it out: “Chain is disconnected (munqati‘) between X and Y.”
     - Do not assume chain continuity unless clearly verified by classical hadith scholars or reliable rijāl data.
     - If a narrator's status is unknown, say: "Status of [name] is unclear."
     - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
@@ -365,7 +366,7 @@ app.post('/gpt-commentary', async (req, res) => {
           { role: 'user',   content: userPrompt }
         ],
         temperature: 0.0,
-        max_tokens: 600
+        max_tokens: 700
       },
       {
         headers: {
