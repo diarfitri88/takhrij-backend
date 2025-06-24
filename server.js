@@ -332,10 +332,11 @@ app.post('/gpt-commentary', async (req, res) => {
     - If a narrator is known to be weak, explicitly mention it and why (e.g., "X is considered weak by Al-Albani").
     - If there is a known disconnection (e.g., mursal, missing link), say it clearly.
     - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**, if the hadith is widely narrated by multiple companions across different chains, mention: 'Classification: Mutawatir'. Otherwise, consider it Ahad.
-    - Evaluate whether each narrator could realistically have met the next in the chain based on known lifespans. If uncertain, classify as munqati’, mursal, or mu‘dal accordingly and explain why.
-    - Evaluate the continuity of the chain: If you recognize a clear lifespan gap—e.g. one narrator died decades before the next was born—explicitly call it out: “Chain is disconnected (munqati‘) between X and Y.”
+    - For each narrator, verify based on rijāl data and known historical lifespans whether he could have met the next. If any could not (e.g., one died decades before the next was born), explicitly state: “Chain is disconnected (munqati‘) between X and Y due to non-overlapping lifespans.”
+    - If a narrator is unknown or not recorded in the major rijal works, explicitly note: “X is majhul (unknown narrator),” then classify the hadith as da‘if gharib if that is the only route.   
     - Do not assume chain continuity unless clearly verified by classical hadith scholars or reliable rijāl data.
     - If a narrator's status is unknown, say: "Status of [name] is unclear."
+    - But do not label a chain “munqati‘” unless you have clear evidence (e.g. a known death-before-birth gap). If the only problem is a majhul narrator, call it majhul—not munqati.
     - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
   
   Only classify a hadith as Qudsi, Marfu', or Mawquf if it is clearly indicated by its wording or attribution:
