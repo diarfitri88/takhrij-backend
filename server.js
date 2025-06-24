@@ -230,7 +230,7 @@ If the phrase is authentic, provide the exact hadith and its grading.
 
 If the hadith is not found in the 9 books, say so clearly with no ambiguity.  
 
-Suggest 1 sahih hadith with similar meaning and reference.  
+Suggest 1 sahih hadith with similar meaning and reference. If the submitted phrase is weak or fabricated, mention which scholars (e.g. Al-Albani, Ibn Hajar, Al-Sakhawi) graded it and where it is found (e.g., Jami‘ al-Saghir, Kanz al-‘Ummal). Clearly state if it is not authentic or if its chain is unknown.
 
 Suggest 3–5 exact **matn-style** English keywords suitable for search that is in the 9 hadith collections (e.g., “moon split”, “smiling is charity”).
 
