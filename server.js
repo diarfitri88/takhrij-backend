@@ -228,7 +228,9 @@ Each paragraph must be followed by **two real line breaks**, use this exact form
 
 If the phrase is authentic, provide the exact hadith and its grading.
 
-Suggest 1 sahih hadith with similar meaning and reference. If the submitted phrase is weak or fabricated, mention which scholars (e.g. Al-Albani, Ibn Hajar, Al-Sakhawi) graded it and where it is found (e.g., _Jami‘ al-Saghir_, _Kanz al-‘Ummal_). Clearly state if it is not authentic or if its chain is unknown.
+If the phrase is unclear, uncommon, or a standalone Arabic word (e.g., لأواء, وجد, عيلة), explain its known meaning in classical hadith usage or rijāl terminology. Do not guess based on modern Arabic or general context.
+
+Suggest 1 sahih hadith with similar meaning and reference. If the submitted phrase is weak or fabricated, mention which scholars (e.g. Al-Albani, Ibn Hajar, Al-Sakhawi) graded it and where it is found (e.g., _Jami‘ al-Saghir_, _Kanz al-‘Ummal_). Clearly state if it is not authentic or if its chain is unknown. Do not claim it is “not found” unless fully verifiable from the 9 books.
 
 Suggest 3–5 exact **matn-style** English keywords suitable for search that is in the 9 hadith collections (e.g., “moon split”, “smiling is charity”).
 
@@ -241,7 +243,7 @@ Strict rules:
 - Do not apologize or say “feel free to ask.”
 
 Respond in a clear, scholarly tone. Paragraph structure and spacing must be exact.
-    `.trim();
+`.trim();
 
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
