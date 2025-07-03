@@ -246,7 +246,7 @@ Respond in a clear, scholarly tone. Paragraph structure and spacing must be exac
     const ai = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
-        model: 'deepseek/deepseek-chat-v3-0324:free',
+        model: 'openai/gpt-4o-mini',
         messages: [
       { role: "system", content: prompt },
       { role: "user", content: q }
