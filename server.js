@@ -166,8 +166,8 @@ return {
 
   fuse = new Fuse(fuseData, {
     includeScore: true,
-    threshold: 0.35,
-    minMatchCharLength: 3,
+    threshold: 0.28,
+    minMatchCharLength: 4,
     ignoreLocation: true,
     keys: ['text']
   });
@@ -179,10 +179,10 @@ function searchHadiths(query) {
   const keywords = extractKeywords(q);
   if (!q || keywords.length === 0 || !fuse) return [];
 
-  // Fuse search returns array of results with .item
-  const results = fuse.search(q);
-  // We map to the original hadith object
-  return results.slice(0, 10).map(r => r.item.hadith);
+  const results = fuse.search(q)
+  .filter(r => r.score <= 0.28);
+
+return results.slice(0, 10).map(r => r.item.hadith);
 }
 
 // ─── 6) SEARCH ENDPOINT ───────────────────────────────────────────────────────
