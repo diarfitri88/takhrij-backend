@@ -439,7 +439,7 @@ Use this exact format:
 If any disagreement exists, explain clearly but briefly.  
 End with a clarifying statement if Ibn Hajar maintained his grading in Taqrib al-Tahdib despite criticism.
 
-Now return the full biography for this narrator: **\${name}**
+Now return the full biography for the narrator provided by the user.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
