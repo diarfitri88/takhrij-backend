@@ -180,7 +180,7 @@ function searchHadiths(query) {
   if (!q || keywords.length === 0 || !fuse) return [];
 
   const results = fuse.search(q)
-  .filter(r => r.score <= 0.28);
+  .filter(r => r.score <= 0.35);
 
 return results.slice(0, 10).map(r => r.item.hadith);
 }
