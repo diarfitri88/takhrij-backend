@@ -164,7 +164,8 @@ function initFuse() {
 
   fuse = new Fuse(fuseData, {
     includeScore: true,
-    threshold: 0.2,
+    threshold: 0.35,
+    minMatchCharLength: 3,
     ignoreLocation: true,
     keys: ['text']
   });
@@ -324,7 +325,7 @@ app.post('/gpt-commentary', async (req, res) => {
   const systemPrompt =
     `You are a specialist in Hadith sciences, trained on the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, as well as classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n` +
     `Output exactly these three sections in order and nothing else:\n` +
-    `Commentary: 3–4 sentences explaining context, meaning, and importance but **do not comment on the chain** here. If the hadith is from Sahih Bukhari, base the explanation on Fath al-Bari by Ibn Hajar. If the hadith is from Sahih Muslim, base the explanation on Sharh of Imam Nawawi. If neither is available, provide a general context explanation from the known Sunnah.\n` +
+    `Commentary: 3–4 sentences explaining con, meaning, and importance but **do not comment on the chain** here. If the hadith is from Sahih Bukhari, base the explanation on Fath al-Bari by Ibn Hajar. If the hadith is from Sahih Muslim, base the explanation on Sharh of Imam Nawawi. If neither is available, provide a general con explanation from the known Sunnah.\n` +
     `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
     `Evaluation of Hadith: - Provide a **brief but accurate** analysis of the chain's strength or weakness, based **only on the known status of narrators**. 
     - If a narrator is known to be weak, explicitly mention it and why (e.g., "X is considered weak by Al-Albani").
@@ -473,5 +474,30 @@ Now return the full biography for this narrator: **\${name}**
 });
 
 // ─── 10) START SERVER ───────────────────────────────────────────────────────────
+app.get("/health", (req, res) => {
+  const allHadiths = [
+    ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
+    ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
+    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
+  ];
+
+  res.json({
+    status: "ok",
+    totalHadiths: allHadiths.length,
+    fuseReady: !!fuse,
+    collections: {
+      bukhari: bukhariHadiths.length,
+      muslim: muslimHadiths.length,
+      tirmidhi: tirmidhiHadiths.length,
+      nasai: nasaiHadiths.length,
+      malik: malikHadiths.length,
+      ibnmajah: ibnMajahHadiths.length,
+      darimi: darimiHadiths.length,
+      ahmed: ahmedHadiths.length,
+      abudawud: abuDawudHadiths.length
+    }
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Takhrij backend running on port ${PORT}`));
