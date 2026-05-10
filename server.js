@@ -312,17 +312,17 @@ app.post('/gpt-commentary', async (req, res) => {
 
   const cacheKey = `${reference}|${collection}`;
   const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.socket.remoteAddress;
- if (!checkAiLimit(ip)) {
+ if (commentaryCache[cacheKey]) {
+  return res.json(commentaryCache[cacheKey]);
+}
+
+if (!checkAiLimit(ip)) {
   return res.json({
     commentary: 'Daily AI limit reached. Please try again after 24 hours.',
     chain: '',
     evaluation: ''
   });
 }
-  if (commentaryCache[cacheKey]) {
-    return res.json(commentaryCache[cacheKey]);
-  }
-
   const snippet = truncate(englishFull, 500);
   const systemPrompt =
     `You are a specialist in Hadith sciences, trained on the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, as well as classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n` +
