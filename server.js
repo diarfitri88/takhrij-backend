@@ -175,20 +175,52 @@ return {
 
 // ─── 5) SEARCH HELPER using Fuse.js ─────────────────────────────────────────────
 function searchHadiths(query) {
-  const q = query.toLowerCase().trim();
-  const keywords = extractKeywords(q);
-  if (!q || keywords.length === 0 || !fuse) return [];
+  const q = normalize(query);
+  const keywords = extractKeywords(query);
+
+  if (!q || keywords.length === 0) return [];
+  if (!fuse) return null;
+
+  const allHadiths = [
+    ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
+    ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
+    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
+  ];
+
+  const exactMatches = allHadiths.filter(h => {
+    const ar = normalize(h.arabic || "");
+    let en = "";
+
+    if (typeof h.english === "string") en = h.english;
+    else if (h.english && typeof h.english === "object") en = h.english.text || h.english.body || "";
+    else if (typeof h.text === "string") en = h.text;
+    else if (typeof h.body === "string") en = h.body;
+
+    en = normalize(en);
+
+    return ar.includes(q) || en.includes(q);
+  });
+
+  if (exactMatches.length) {
+    return exactMatches.slice(0, 10);
+  }
 
   const results = fuse.search(q)
-  .filter(r => r.score <= 0.35);
+    .filter(r => r.score <= 0.35);
 
-return results.slice(0, 10).map(r => r.item.hadith);
+  return results.slice(0, 10).map(r => r.item.hadith);
 }
 
 // ─── 6) SEARCH ENDPOINT ───────────────────────────────────────────────────────
 app.post("/search-hadith", async (req, res) => {
   const q = (req.body.query || "").trim();
   const matches = searchHadiths(q);
+
+if (matches === null) {
+  return res.json({
+    result: '❌ Hadith database is still loading. Please try again in a few seconds.'
+  });
+}
 
   if (matches.length) {
     const result = matches.map(h => {
