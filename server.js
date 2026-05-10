@@ -156,10 +156,12 @@ function initFuse() {
     else if (typeof h.text === "string") en = h.text;
     else if (typeof h.body === "string") en = h.body;
 
-    return {
-      text: `${normalize(en)} ${(names[h.collection] || "").toLowerCase()} ${h.hadithnumber || h.id || h.number || ""}`,
-      hadith: h
-    };
+   const ar = h.arabic || "";
+
+return {
+  text: `${normalize(en)} ${normalize(ar)} ${(names[h.collection] || "").toLowerCase()} ${h.reference || ""} ${h.hadithnumber || h.id || h.number || ""}`,
+  hadith: h
+};
   });
 
   fuse = new Fuse(fuseData, {
