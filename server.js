@@ -166,7 +166,7 @@ return {
 
   fuse = new Fuse(fuseData, {
     includeScore: true,
-    threshold: 0.28,
+    threshold: 0.35,
     minMatchCharLength: 4,
     ignoreLocation: true,
     keys: ['text']
