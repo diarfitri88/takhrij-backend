@@ -10,13 +10,21 @@ const app = express();
 const mutawatirData = JSON.parse(fs.readFileSync(path.join(__dirname, 'mutawatir.json'), 'utf8'));
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "64kb" }));
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+const OPENROUTER_TIMEOUT_MS = Number(process.env.OPENROUTER_TIMEOUT_MS) || 30000;
+const MAX_QUERY_LENGTH = 300;
+const MAX_TEXT_FIELD_LENGTH = 4000;
 
 // ─── 0) CACHE FOR COMMENTARY ───────────────────────────────────────────────────
-const commentaryCache = {};
+const commentaryCache = new Map();
+const MAX_COMMENTARY_CACHE_ENTRIES = 250;
+const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
-const aiCallTracker = {}; // { 'IP': { count: x, lastReset: timestamp } }
+const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
 
 const MAX_CALLS = 15;
 const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
@@ -24,25 +32,96 @@ const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 function checkAiLimit(ip) {
   const now = Date.now();
 
-  if (!aiCallTracker[ip]) {
-    aiCallTracker[ip] = { count: 0, lastReset: now };
+  if (!aiCallTracker.has(ip)) {
+    aiCallTracker.set(ip, { count: 0, lastReset: now });
   }
+
+  const entry = aiCallTracker.get(ip);
 
   // Reset if 24 hours passed since lastReset
-  if (now - aiCallTracker[ip].lastReset >= TIME_LIMIT) {
-    aiCallTracker[ip].count = 0;
-    aiCallTracker[ip].lastReset = now;
+  if (now - entry.lastReset >= TIME_LIMIT) {
+    entry.count = 0;
+    entry.lastReset = now;
   }
 
-  if (aiCallTracker[ip].count >= MAX_CALLS) {
+  if (entry.count >= MAX_CALLS) {
     return false; // Limit reached
   }
 
-  aiCallTracker[ip].count++;
+  entry.count++;
   return true; // Allowed
+}
+
+function pruneAiCallTracker() {
+  const cutoff = Date.now() - TIME_LIMIT;
+  for (const [ip, entry] of aiCallTracker.entries()) {
+    if (entry.lastReset < cutoff) aiCallTracker.delete(ip);
+  }
+}
+
+function getCachedCommentary(cacheKey) {
+  const cached = commentaryCache.get(cacheKey);
+  if (!cached) return null;
+
+  if (Date.now() - cached.createdAt > COMMENTARY_CACHE_TTL_MS) {
+    commentaryCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.payload;
+}
+
+function setCachedCommentary(cacheKey, payload) {
+  // Bound the in-memory cache so repeated commentary requests cannot grow the process forever.
+  commentaryCache.set(cacheKey, { payload, createdAt: Date.now() });
+  if (commentaryCache.size > MAX_COMMENTARY_CACHE_ENTRIES) {
+    const oldestKey = commentaryCache.keys().next().value;
+    commentaryCache.delete(oldestKey);
+  }
+}
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || req.ip
+    || req.socket.remoteAddress
+    || 'unknown';
+}
+
+function cleanInput(value, maxLength = MAX_TEXT_FIELD_LENGTH) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\u0000/g, '').trim().slice(0, maxLength);
+}
+
+async function callOpenRouter(messages, { max_tokens, temperature }) {
+  if (!process.env.OPENROUTER_API_KEY) {
+    const err = new Error("OPENROUTER_API_KEY is not configured");
+    err.statusCode = 503;
+    throw err;
+  }
+
+  // Keep OpenRouter access centralized so timeouts, model choice, and response guards stay consistent.
+  const response = await axios.post(
+    OPENROUTER_URL,
+    {
+      model: OPENROUTER_MODEL,
+      messages,
+      max_tokens,
+      temperature
+    },
+    {
+      timeout: OPENROUTER_TIMEOUT_MS,
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  return cleanInput(response.data?.choices?.[0]?.message?.content || "", 12000);
 }
 // ─── 1) HELPER: Truncate long text to 500 chars ───────────────────────────────
 function truncate(text, max = 500) {
+  text = typeof text === 'string' ? text : '';
   const singleLine = text.replace(/[\r\n]+/g, ' ');
   return singleLine.length > max
     ? singleLine.slice(0, max).trim() + '…'
@@ -57,13 +136,13 @@ const STOP_WORDS = new Set([
 function extractKeywords(query) {
   return query
     .toLowerCase()
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    .match(/[\p{L}\p{N}]+/gu)
+    ?.filter(w => w.length > 2 && !STOP_WORDS.has(w)) || [];
 }
 
 // ─── 3) HELPER: normalize text for searching ────────────────────────────────────
 function normalize(text) {
-  return text
+  return String(text || '')
     .toLowerCase()
     .replace(/[\u064B-\u065F]/g, '')       // remove Arabic diacritics
     .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '') // strip punctuation
@@ -81,6 +160,9 @@ function checkMutawatir(reference) {
 // ─── 4) LOAD HADITH COLLECTIONS ────────────────────────────────────────────────
 let bukhariHadiths = [], muslimHadiths = [], tirmidhiHadiths = [], nasaiHadiths = [];
 let malikHadiths = [], ibnMajahHadiths = [], darimiHadiths = [], ahmedHadiths = [], abuDawudHadiths = [];
+// Keep combined search data cached after startup; rebuilding it per request is costly for large JSON collections.
+let allHadithsCache = [];
+let fuseDataCache = [];
 
 const urls = {
   bukhari:   "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/bukhari.json?alt=media&token=f0c30d22-2041-41c1-ae4e-84d82749ec5d",
@@ -96,8 +178,8 @@ const urls = {
 
 async function loadHadiths() {
   try {
-    const results = await Promise.all(Object.values(urls).map(u => axios.get(u)));
     const collections = Object.keys(urls);
+    const results = await Promise.all(collections.map(collection => axios.get(urls[collection], { timeout: 20000 })));
     results.forEach((res, i) => {
       const arr = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.hadiths) ? res.data.hadiths : []);
       const mapped = arr.map(h => ({ ...h, collection: collections[i] }));
@@ -114,6 +196,7 @@ async function loadHadiths() {
       }
     });
     console.log("✅ All hadith collections loaded.");
+    allHadithsCache = getAllHadiths();
     // After loading hadiths, initialize Fuse.js with all hadiths combined:
     initFuse();
   } catch (err) {
@@ -138,38 +221,46 @@ const refFormatters = {
   default: h => `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number}`
 };
 
-// ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
-let fuse;
-function initFuse() {
-  const allHadiths = [
+function getAllHadiths() {
+  return [
     ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
     ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
     ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
   ];
+}
 
+function getEnglishText(h) {
+  if (typeof h.english === "string") return h.english;
+  if (h.english && typeof h.english === "object") return h.english.text || h.english.body || "";
+  if (typeof h.text === "string") return h.text;
+  if (typeof h.body === "string") return h.body;
+  return "";
+}
+
+// ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
+let fuse;
+function initFuse() {
   // Prepare data for Fuse search - we keep the full hadith object as 'hadith'
-  const fuseData = allHadiths.map(h => {
-    let en = "";
-    if (typeof h.english === "string") en = h.english;
-    else if (h.english && typeof h.english === "object")
-      en = h.english.text || h.english.body || "";
-    else if (typeof h.text === "string") en = h.text;
-    else if (typeof h.body === "string") en = h.body;
+  fuseDataCache = allHadithsCache.map(h => {
+    const en = getEnglishText(h);
+    const ar = h.arabic || "";
 
-   const ar = h.arabic || "";
-
-return {
-  text: `${normalize(en)} ${normalize(ar)} ${(names[h.collection] || "").toLowerCase()} ${h.reference || ""} ${h.hadithnumber || h.id || h.number || ""}`,
-  hadith: h
-};
+    return {
+      text: `${normalize(en)} ${normalize(ar)}`,
+      referenceText: `${(names[h.collection] || "").toLowerCase()} ${h.reference || ""} ${h.hadithnumber || h.id || h.number || ""}`,
+      hadith: h
+    };
   });
 
-  fuse = new Fuse(fuseData, {
+  fuse = new Fuse(fuseDataCache, {
     includeScore: true,
     threshold: 0.35,
     minMatchCharLength: 4,
     ignoreLocation: true,
-    keys: ['text']
+    keys: [
+      { name: 'text', weight: 0.85 },
+      { name: 'referenceText', weight: 0.15 }
+    ]
   });
 }
 
@@ -181,28 +272,21 @@ function searchHadiths(query) {
   if (!q || keywords.length === 0) return [];
   if (!fuse) return null;
 
-  const allHadiths = [
-    ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
-    ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
-    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
-  ];
-
-  const exactMatches = allHadiths.filter(h => {
-    const ar = normalize(h.arabic || "");
-    let en = "";
-
-    if (typeof h.english === "string") en = h.english;
-    else if (h.english && typeof h.english === "object") en = h.english.text || h.english.body || "";
-    else if (typeof h.text === "string") en = h.text;
-    else if (typeof h.body === "string") en = h.body;
-
-    en = normalize(en);
-
-    return ar.includes(q) || en.includes(q);
-  });
-
+  // Search quality order: exact phrase first, then all-keyword matches, then Fuse fuzzy fallback.
+  const exactMatches = fuseDataCache.filter(({ text }) => text.includes(q)).map(({ hadith }) => hadith);
   if (exactMatches.length) {
     return exactMatches.slice(0, 10);
+  }
+
+  const keywordMatches = allHadithsCache.filter(h => {
+    const ar = normalize(h.arabic || "");
+    const en = normalize(getEnglishText(h));
+
+    return keywords.every(keyword => ar.includes(keyword) || en.includes(keyword));
+  });
+
+  if (keywordMatches.length) {
+    return keywordMatches.slice(0, 10);
   }
 
   const results = fuse.search(q)
@@ -213,7 +297,11 @@ function searchHadiths(query) {
 
 // ─── 6) SEARCH ENDPOINT ───────────────────────────────────────────────────────
 app.post("/search-hadith", async (req, res) => {
-  const q = (req.body.query || "").trim();
+  const q = cleanInput(req.body.query, MAX_QUERY_LENGTH);
+  if (!q) {
+    return res.json({ result: 'âŒ No query provided.' });
+  }
+
   const matches = searchHadiths(q);
 
 if (matches === null) {
@@ -224,12 +312,7 @@ if (matches === null) {
 
   if (matches.length) {
     const result = matches.map(h => {
-      let en = "";
-      if (typeof h.english === "string") en = h.english;
-      else if (h.english && typeof h.english === "object")
-        en = h.english.text || h.english.body || "";
-      else if (typeof h.text === "string") en = h.text;
-      else if (typeof h.body === "string") en = h.body;
+      const en = getEnglishText(h);
 
       const ar  = h.arabic || "[No Arabic]";
       const ref = h.reference
@@ -252,6 +335,12 @@ if (matches === null) {
 if (!q) {
   return res.json({ result: '❌ No query provided.' });
 }   
+    const ip = getClientIp(req);
+    if (!checkAiLimit(ip)) {
+      return res.json({ result: 'Daily AI limit reached. Please try again after 24 hours.' });
+    }
+    pruneAiCallTracker();
+
     const prompt = `
 You are a hadith researcher trained on the Salafi methodology, including the works of Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, and Ibn Hajar.
 
@@ -278,26 +367,12 @@ Strict rules:
 Stick to classical hadith sources only. Respond like a precise Salafi muhaqqiq.
 `.trim();
 
-    const ai = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: 'openai/gpt-4o-mini',
-        messages: [
+    const rawAi = await callOpenRouter([
       { role: "system", content: prompt },
       { role: "user", content: q }
-    ],
-    max_tokens: 1200,
-    temperature: 0.0
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
+    ], { max_tokens: 1200, temperature: 0.0 });
 
-let raw = ai.data.choices[0]?.message?.content || '';
+let raw = rawAi || '';
     
 raw = raw.replace(/\r\n/g, '\n');
 raw = raw.replace(/\n{3,}/g, '\n\n');
@@ -322,10 +397,10 @@ raw = raw.trim();
 });
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
 app.post('/gpt-commentary', async (req, res) => {
-  const englishFull = (req.body.english || '').trim();
-  const arabicFull  = (req.body.arabic  || '').trim();
-  const reference   = (req.body.reference || '').trim();
-  const collection  = (req.body.collection || '').trim().toLowerCase();
+  const englishFull = cleanInput(req.body.english);
+  const arabicFull  = cleanInput(req.body.arabic);
+  const reference   = cleanInput(req.body.reference, 200);
+  const collection  = cleanInput(req.body.collection, 40).toLowerCase();
 
   // Defensive: Always return all 3 fields
   const errorPayload = {
@@ -343,9 +418,10 @@ app.post('/gpt-commentary', async (req, res) => {
   }
 
   const cacheKey = `${reference}|${collection}`;
-  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.socket.remoteAddress;
- if (commentaryCache[cacheKey]) {
-  return res.json(commentaryCache[cacheKey]);
+  const ip = getClientIp(req);
+  const cachedCommentary = getCachedCommentary(cacheKey);
+ if (cachedCommentary) {
+  return res.json(cachedCommentary);
 }
 
 if (!checkAiLimit(ip)) {
@@ -355,6 +431,7 @@ if (!checkAiLimit(ip)) {
     evaluation: ''
   });
 }
+pruneAiCallTracker();
   const snippet = truncate(englishFull, 500);
   const systemPrompt =
     `You are a specialist in Hadith sciences, trained on the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, as well as classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n` +
@@ -391,27 +468,11 @@ if (!checkAiLimit(ip)) {
     `Hadith (English): ${snippet}`;
 
   try {
-    const aiResp = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'openai/gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userPrompt }
-        ],
-        temperature: 0.0,
-        max_tokens: 700
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    let raw = aiResp.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/```[\\s\\S]*?```/g, '').trim();
+    let raw = await callOpenRouter([
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: userPrompt }
+    ], { temperature: 0.0, max_tokens: 700 });
+    raw = raw.replace(/```[\s\S]*?```/g, '').trim();
 
     // More forgiving regex:
     const commentaryMatch = raw.match(/Commentary[^:]*:\s*([\s\S]*?)(?=Chain of Narrators[^:]*:)/i);
@@ -431,7 +492,7 @@ if (!checkAiLimit(ip)) {
 }
 
     
-    commentaryCache[cacheKey] = payload;
+    setCachedCommentary(cacheKey, payload);
     return res.json(payload);
 
   } catch (err) {
@@ -442,7 +503,7 @@ if (!checkAiLimit(ip)) {
 // ─── 9) NARRATOR BIO ───────────────────────────────────────────────────────────
 app.post('/narrator-bio', async (req, res) => {
   try {
-    const name = (req.body.name || '').trim();
+    const name = cleanInput(req.body.name, 120);
     if (!name) {
       return res.json({ bio: 'No narrator name provided.' });
     }
@@ -480,24 +541,10 @@ Now return the full biography for the narrator provided by the user.
       { role: 'user',   content: name }
     ];
 
-    const ai = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'openai/gpt-4o-mini',
-        messages,
-        max_tokens: 800,
-        temperature: 0.0
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const rawAi = await callOpenRouter(messages, { max_tokens: 800, temperature: 0.0 });
 
     // 3) Don’t strip bold markers—just remove code fences if they appear
-    let raw = ai.data.choices[0]?.message?.content || '';
+    let raw = rawAi || '';
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
 
     return res.json({ bio: raw });
@@ -509,16 +556,12 @@ Now return the full biography for the narrator provided by the user.
 
 // ─── 10) START SERVER ───────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  const allHadiths = [
-    ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
-    ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
-    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
-  ];
-
   res.json({
     status: "ok",
-    totalHadiths: allHadiths.length,
+    totalHadiths: allHadithsCache.length,
     fuseReady: !!fuse,
+    commentaryCacheSize: commentaryCache.size,
+    aiRateLimitTrackedIps: aiCallTracker.size,
     collections: {
       bukhari: bukhariHadiths.length,
       muslim: muslimHadiths.length,
