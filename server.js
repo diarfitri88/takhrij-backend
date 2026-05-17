@@ -22,7 +22,7 @@ const MAX_TEXT_FIELD_LENGTH = 4000;
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'explicit-source-grading-v2';
+const COMMENTARY_CACHE_VERSION = 'explicit-source-grading-v3';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -367,7 +367,7 @@ function extractAuthenticityStatus(h, collection) {
   // This only surfaces explicit grading phrases already present in local/source data; GPT is not asked to grade.
   if (hasExplicitWeakPhrase) {
     return {
-      status: "Weak (mentioned in source text)",
+      status: "Weak (explicitly mentioned in source text)",
       source,
       caution: 'This source text includes an explicit weakness note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
     };
@@ -435,14 +435,19 @@ function sanitizeNarratorBio(rawBio = '') {
       }
     });
 
+  const isPlaceholder = value => /^(not listed|not specified|unknown|unclear|n\/a|none)\b/i.test(String(value).trim());
   const preferredKnownFor = sectionValues.get('known for') || sectionValues.get('educational importance');
   const safeSections = [
-    ['Era/Generation', sectionValues.get('era/generation') || 'Not specified in this summary'],
-    ['Teachers', sectionValues.get('teachers') || 'Not listed in this summary'],
-    ['Students', sectionValues.get('students') || 'Not listed in this summary'],
-    ['Collections', sectionValues.get('collections') || 'Not specified in this summary'],
-    ['Known For', preferredKnownFor || 'Educational role not specified in this summary']
-  ];
+    ['Era/Generation', sectionValues.get('era/generation')],
+    ['Teachers', sectionValues.get('teachers')],
+    ['Students', sectionValues.get('students')],
+    ['Collections', sectionValues.get('collections')],
+    ['Known For', preferredKnownFor]
+  ].filter(([, value]) => value && !isPlaceholder(value));
+
+  if (!safeSections.length) {
+    return '**Known For:** Beginner-level historical information for this narrator is not available in this brief summary.';
+  }
 
   return safeSections
     .map(([label, value]) => `**${label}:** ${value}`)
@@ -711,19 +716,19 @@ app.post('/narrator-bio', async (req, res) => {
     const educationalBioPrompt = `
 You are an educational assistant helping laymen learn basic hadith narrator context.
 
-The user will give one narrator name. Return a concise Markdown summary using **bold labels only** and no bullet points, code fences, scholar evaluation commentary, or narrator authenticity discussion.
+The user will give one narrator name. Return a concise, useful Markdown biography using **bold labels only** and no bullet points, code fences, scholar evaluation commentary, or narrator authenticity discussion.
 
-Keep the biography simple and educational. Focus only on historical role, importance in hadith transmission, connection to major scholars or companions, and educational significance. Do not evaluate whether the narrator's reports are accepted or rejected.
+Write for beginners learning Islamic history and hadith transmission. Make the summary warm, specific, and educational. Focus only on historical role, importance in hadith transmission, connection to major scholars or companions, and educational significance. Do not evaluate whether the narrator's reports are accepted or rejected.
 
-If the narrator is unclear or too ambiguous, fill the fields below with "Not specified in this summary".
+If a detail is not known from your general knowledge, omit that detail instead of filling the response with placeholders.
 
 Use this exact format:
 
 **Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
-**Teachers:** [Known teachers, or "Not listed in this summary"]
-**Students:** [Known students, or "Not listed in this summary"]
-**Collections:** [Major hadith collections where this narrator appears when known, or "Not specified in this summary"]
-**Known For:** [2-3 beginner-friendly sentences about historical role, hadith transmission, Islamic learning, and educational significance]
+**Teachers:** [Known teachers, if known]
+**Students:** [Known students, if known]
+**Collections:** [Major hadith collections where this narrator appears when known]
+**Known For:** [3-4 beginner-friendly sentences about historical role, hadith transmission, Islamic learning, and educational significance]
     `.trim();
 
     // 2) Send the narrator’s name as the user message
