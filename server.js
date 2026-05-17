@@ -22,7 +22,7 @@ const MAX_TEXT_FIELD_LENGTH = 4000;
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'explicit-arabic-grading-v4';
+const COMMENTARY_CACHE_VERSION = 'weak-caution-language-v5';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -554,6 +554,14 @@ function applyWeakReportCommentaryGuard(commentary = '', authenticityStatus = ''
   return `${caution}\n\n${cleaned || 'The topic may still be discussed in a general educational way, but specific claims from this narration need stronger evidence before being used for practice.'}`;
 }
 
+function polishCommentaryLanguage(commentary = '') {
+  return String(commentary || '')
+    .replace(/\bfor laymen\b/gi, 'for readers')
+    .replace(/\bpractical benefit for readers\b/gi, 'practical benefit')
+    .replace(/\bpractical benefit for the reader\b/gi, 'practical benefit')
+    .trim();
+}
+
 // ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
 let fuse;
 function initFuse() {
@@ -645,71 +653,24 @@ if (matches === null) {
     }).join("\n");
     return res.json({ result });
  } else {
-// ─── GPT FALLBACK ─────────────────────────────────────────────────────────
-  try {
-   const q = (req.body.query || '').trim();
-if (!q) {
-  return res.json({ result: '❌ No query provided.' });
-}   
-    const ip = getClientIp(req);
-    if (!checkAiLimit(ip)) {
-      return res.json({ result: 'Daily AI limit reached. Please try again after 24 hours.' });
-    }
-    pruneAiCallTracker();
-
-    const prompt = `
-You are a hadith researcher trained on the Salafi methodology, including the works of Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, and Ibn Hajar.
-
-The user submitted a phrase from a hadith, in Arabic or English, which may be misquoted, vague, or incorrectly attributed.
-
-You must respond in **exactly 4 paragraphs**, each under **80 words** and separated by **two real line breaks** (\\n\\n). Do **not combine points** in one paragraph.
-
-If the phrase is verifiable in the 9 primary hadith collections (Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasa’i, Ahmad, Muwatta, Darimi), give the **exact matn**, **grading**, and **reference**. Cite scholars like Al-Albani or Ibn Hajar. Do **not use general language like “reported in various sources”**. Only cite what is verified.
-
-If the phrase is vague, unclear, or a standalone Arabic word (e.g., لأواء, عيلة), define it based on hadith or rijāl usage only. Do **not translate based on modern Arabic or personal guesswork**.
-
-Then suggest one sahih hadith with a **similar theme**. Only include it if it is **found in the 9 books** and graded **sahih** by Salafi scholars. Do **not cite weak or disputed hadiths**. Avoid “city of knowledge” and other unreliable narrations.
-
-Finally, suggest 3–5 **matn-style keywords** from known sahih hadiths (e.g., “smiling is charity”, “fear Allah”, “whoever lies about me”). Do not use poetic or vague expressions.
-
-Strict rules:
-- Use “Prophet Muhammad ﷺ” with salutation.
-- No Qur’an quotes.
-- No combining points.
-- No guessing, no metaphorical claims, no vague mentions.
-- Do not say “may be interpreted as”, “it might be”, or “reported elsewhere”.
-- No apologies or suggestions like “try rephrasing”.
-
-Stick to classical hadith sources only. Respond like a precise Salafi muhaqqiq.
-`.trim();
-
-    const rawAi = await callOpenRouter([
-      { role: "system", content: prompt },
-      { role: "user", content: q }
-    ], { max_tokens: 1200, temperature: 0.0 });
-
-let raw = rawAi || '';
-    
-raw = raw.replace(/\r\n/g, '\n');
-raw = raw.replace(/\n{3,}/g, '\n\n');
-raw = raw.replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n'); // keep
-raw = raw.replace(/\n{2,}/g, '\n\n');                    // normalize spacing
-raw = raw.replace(/([^\n])\n([^\n])/g, '$1 $2');          // fix mid-sentence breaks
-raw = raw.trim();
-    
-    const result =
-    `---\nEnglish Matn:\n${raw}\n\n` +
-    `Reference: AI Generated\n` +
-    `Note: No close match was found in the local JSON search. The AI response is only a fallback and should be verified against source texts.\n` +
-    `Search tip: Enter specific keywords (minimum 3 letters each) separated by spaces; common words like "and", "the", "of" are ignored, and fuzzy matching helps catch close spellings.`;
-
-
-   return res.json({ result });
-    } catch (err) {
-      console.error("❌ GPT fallback error:", err.message);
-      return res.json({ result: `❌ AI fallback failed. Please try again later.` });
-    }
+  // Safe fallback: no model-generated grading or authentication when local search has no source match.
+  const fallbackQuery = (req.body.query || '').trim();
+  if (!fallbackQuery) {
+    return res.json({ result: 'No query provided.' });
   }
+
+  const yaSinFallbackNote = /\b(?:ya\s*sin|yasin|yaa\s*seen|yaseen)\b/i.test(fallbackQuery)
+    ? ' For Ya Sin virtue reports or specific rewards, check the source grading carefully and do not treat the fallback as confirmation.'
+    : '';
+
+  const safeFallbackResult =
+    `---\nEnglish Matn:\nNo verified hadith result was found in the local indexed collections for "${fallbackQuery}". This fallback is not an authenticated hadith result and does not grade the report as sahih, hasan, weak, fabricated, or authentic.${yaSinFallbackNote}\n\n` +
+    `Reference: AI Generated\n` +
+    `Authenticity Status: Not a verified source result\n` +
+    `Note: Search exact Arabic or English phrases from the narration when possible. If the topic involves a specific virtue, reward, or practice, verify it against the source text and qualified scholarship.`;
+
+  return res.json({ result: safeFallbackResult });
+ }
 });
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
 app.post('/gpt-commentary', async (req, res) => {
@@ -774,9 +735,9 @@ pruneAiCallTracker();
     `Hadith (English): ${snippet}`;
 
   const educationalSystemPrompt =
-    `You are a careful educational assistant for laymen studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
+    `You are a careful educational assistant for people studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
     `Output exactly these two sections in order and nothing else:\n` +
-    `Commentary: Give a comprehensive but concise educational explanation. If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence. If Educational Caution is not "None", include it in beginner-friendly wording. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and practical benefit for laymen. Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
+    `Commentary: Give a comprehensive but concise educational explanation. If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence. If Educational Caution is not "None", include it in beginner-friendly wording. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and a natural practical takeaway using wording such as "A practical benefit is", "This can help the reader", "One takeaway is", or "In daily practice". Do not use the phrase "for laymen". Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
     `Chain of Narrators: extract narrator names from the Arabic text and transliterate into English, separated by ->. Do not evaluate, grade, praise, weaken, authenticate, or criticize the chain or narrators.\n` +
     `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not create an Authenticity Status section. The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed. If unsure, keep the chain list simple and say "No chain."`;
 
@@ -787,10 +748,10 @@ pruneAiCallTracker();
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
     const parsedCommentary = parseAiCommentary(raw);
-    const guardedCommentary = applyWeakReportCommentaryGuard(
+    const guardedCommentary = polishCommentaryLanguage(applyWeakReportCommentaryGuard(
       parsedCommentary.commentary,
       authenticity.status
-    );
+    ));
 
     const payload = {
       commentary: guardedCommentary,
