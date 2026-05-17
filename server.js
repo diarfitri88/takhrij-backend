@@ -483,6 +483,43 @@ function sanitizeNarratorBio(rawBio = '') {
     .join('\n');
 }
 
+function stripSectionHeading(text = '', headingPattern) {
+  return String(text)
+    .replace(new RegExp(`^\\s*(?:#{1,6}\\s*)?(?:\\*\\*)?${headingPattern}(?:\\*\\*)?\\s*[:：-]?\\s*`, 'i'), '')
+    .trim();
+}
+
+function parseAiCommentary(raw = '') {
+  const cleaned = String(raw || '').replace(/```[\s\S]*?```/g, '').trim();
+  const commentaryHeading = '(?:Commentary|Explanation|Educational Commentary|Meaning)';
+  const chainHeading = '(?:Chain of Narrators|Narrator Chain|Isnad|Chain)';
+  const commentaryRegex = new RegExp(
+    `${commentaryHeading}\\s*[:：-]?\\s*([\\s\\S]*?)(?=${chainHeading}\\s*[:：-]?|$)`,
+    'i'
+  );
+  const chainRegex = new RegExp(`${chainHeading}\\s*[:：-]?\\s*([\\s\\S]*)`, 'i');
+
+  const commentaryMatch = cleaned.match(commentaryRegex);
+  const chainMatch = cleaned.match(chainRegex);
+  const chain = chainMatch?.[1]?.trim() || 'No chain.';
+
+  let commentary = commentaryMatch?.[1]?.trim() || '';
+  if (!commentary) {
+    // Preserve frontend compatibility even when the model omits headings.
+    commentary = cleaned
+      .replace(chainRegex, '')
+      .replace(/(?:Evaluation of Hadith|Fiqh Ruling)\s*[:：-]?\s*[\s\S]*/i, '')
+      .trim();
+  }
+
+  commentary = stripSectionHeading(commentary, commentaryHeading);
+
+  return {
+    commentary: commentary || 'Commentary was not available for this hadith. Please refer to qualified scholars for detailed explanation.',
+    chain
+  };
+}
+
 // ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
 let fuse;
 function initFuse() {
@@ -711,14 +748,11 @@ pruneAiCallTracker();
       { role: 'user',   content: userPrompt }
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
-
-    // Parse only educational commentary and narrator-chain text; grading/fiqh sections are intentionally ignored.
-    const commentaryMatch = raw.match(/Commentary[^:]*:\s*([\s\S]*?)(?=Chain of Narrators[^:]*:)/i);
-    const chainMatch      = raw.match(/Chain of Narrators[^:]*:\s*([\s\S]*)/i);
+    const parsedCommentary = parseAiCommentary(raw);
 
     const payload = {
-      commentary: commentaryMatch && commentaryMatch[1].trim() ? commentaryMatch[1].trim() : 'No commentary.',
-      chain:      chainMatch && chainMatch[1].trim() ? chainMatch[1].trim() : 'No chain.',
+      commentary: parsedCommentary.commentary,
+      chain: parsedCommentary.chain,
       evaluation: '',
       authenticityStatus: authenticity.status,
       authenticitySource: authenticity.source,
