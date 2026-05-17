@@ -237,6 +237,120 @@ function getEnglishText(h) {
   return "";
 }
 
+function getHadithReference(h) {
+  return h.reference
+    ? h.reference
+    : (refFormatters[h.collection] || refFormatters.default)(h);
+}
+
+function normalizeCollectionKey(value = '') {
+  const input = String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const aliases = {
+    bukhari: 'bukhari',
+    sahihbukhari: 'bukhari',
+    muslim: 'muslim',
+    sahihmuslim: 'muslim',
+    tirmidhi: 'tirmidhi',
+    jamitirmidhi: 'tirmidhi',
+    nasai: 'nasai',
+    sunannasai: 'nasai',
+    malik: 'malik',
+    muwattamalik: 'malik',
+    ibnmajah: 'ibnmajah',
+    sunanibnmajah: 'ibnmajah',
+    darimi: 'darimi',
+    sunandarimi: 'darimi',
+    ahmed: 'ahmed',
+    ahmad: 'ahmed',
+    musnadahmad: 'ahmed',
+    abudawud: 'abudawud',
+    abidawud: 'abudawud',
+    sunanabidawud: 'abudawud'
+  };
+
+  return aliases[input] || value;
+}
+
+function findHadithByReference(reference, collection) {
+  const collectionKey = normalizeCollectionKey(collection);
+  const referenceText = String(reference || '').toLowerCase();
+  const referenceNumber = (referenceText.match(/\d+/g) || []).pop();
+
+  return allHadithsCache.find(h => {
+    if (collectionKey && h.collection !== collectionKey) return false;
+
+    const knownReference = getHadithReference(h).toLowerCase();
+    if (knownReference === referenceText) return true;
+
+    const hadithNumbers = [h.hadithnumber, h.idInBook, h.id, h.number]
+      .filter(Boolean)
+      .map(value => String(value));
+
+    return referenceNumber && hadithNumbers.includes(referenceNumber);
+  }) || null;
+}
+
+function extractAuthenticityStatus(h, collection) {
+  const collectionKey = normalizeCollectionKey(collection || h?.collection);
+
+  if (['bukhari', 'muslim'].includes(collectionKey)) {
+    return {
+      status: 'Sahih',
+      source: `${names[collectionKey]} collection metadata`,
+      caution: ''
+    };
+  }
+
+  const explicitFields = [
+    h?.grade,
+    h?.grading,
+    h?.classification,
+    h?.authenticity,
+    h?.status,
+    h?.english?.grade,
+    h?.english?.grading,
+    h?.english?.classification
+  ].filter(Boolean).join(' ');
+
+  const sourceText = `${explicitFields} ${getEnglishText(h || {})} ${h?.arabic || ''}`;
+  const source = explicitFields ? 'structured source field' : 'source text';
+
+  // This only surfaces wording already present in local/source data; GPT is not asked to grade.
+  if (/\b(da['‘’]?if|daeef|weak)\b/i.test(sourceText) || /ضعيف/.test(sourceText)) {
+    return {
+      status: "Weak (Da'if)",
+      source,
+      caution: 'This source text includes a weakness/caution note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+    };
+  }
+
+  if (/\bdisputed\b|\bdiffer(?:ed|ence|s)?\b|\bnot established\b/i.test(sourceText) || /اختلاف|اختلف|لم يثبت/.test(sourceText)) {
+    return {
+      status: 'Disputed or cautioned in source',
+      source,
+      caution: 'This source text includes a dispute or caution note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+    };
+  }
+
+  if (/\bhasan\s+sahih\b|\bsahih\s+hasan\b/i.test(sourceText) || /حسن صحيح/.test(sourceText)) {
+    return { status: 'Hasan Sahih', source, caution: '' };
+  }
+
+  if (/\bsahih\b/i.test(sourceText) || /صحيح/.test(sourceText)) {
+    return { status: 'Sahih', source, caution: '' };
+  }
+
+  if (/\bhasan\b/i.test(sourceText) || /حسن/.test(sourceText)) {
+    return { status: 'Hasan', source, caution: '' };
+  }
+
+  return {
+    status: 'Not specified in source',
+    source: 'available source metadata/text',
+    caution: ''
+  };
+}
+
 // ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
 let fuse;
 function initFuse() {
@@ -315,9 +429,8 @@ if (matches === null) {
       const en = getEnglishText(h);
 
       const ar  = h.arabic || "[No Arabic]";
-      const ref = h.reference
-  ? h.reference
-  : (refFormatters[h.collection] || refFormatters.default)(h);
+      const ref = getHadithReference(h);
+      const authenticity = extractAuthenticityStatus(h, h.collection);
        // Mutawatir Check
   const mutawatirInfo = checkMutawatir(ref);
   const classification = mutawatirInfo
@@ -325,7 +438,7 @@ if (matches === null) {
   : `Classification: Ahad`;
 
 
-      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\n${classification}`;
+      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\nAuthenticity Status: ${authenticity.status}\n${classification}`;
     }).join("\n");
     return res.json({ result });
  } else {
@@ -406,14 +519,20 @@ app.post('/gpt-commentary', async (req, res) => {
   const errorPayload = {
     commentary: 'No commentary.',
     chain: 'No chain.',
-    evaluation: ''
+    evaluation: '',
+    authenticityStatus: 'Not specified in source',
+    authenticitySource: 'available source metadata/text',
+    sourceCaution: ''
   };
 
   if (!englishFull || !arabicFull || !reference || !collection) {
     return res.json({
       commentary: 'Error: Missing required field.',
       chain: '',
-      evaluation: ''
+      evaluation: '',
+      authenticityStatus: 'Not specified in source',
+      authenticitySource: 'available source metadata/text',
+      sourceCaution: ''
     });
   }
 
@@ -428,23 +547,31 @@ if (!checkAiLimit(ip)) {
   return res.json({
     commentary: 'Daily AI limit reached. Please try again after 24 hours.',
     chain: '',
-    evaluation: ''
+    evaluation: '',
+    authenticityStatus: 'Not specified in source',
+    authenticitySource: 'available source metadata/text',
+    sourceCaution: ''
   });
 }
 pruneAiCallTracker();
   const snippet = truncate(englishFull, 500);
+  const sourceHadith = findHadithByReference(reference, collection);
+  const authenticity = extractAuthenticityStatus(sourceHadith, collection);
   const userPrompt =
     `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
+    `Source Authenticity Status: ${authenticity.status}\n` +
+    `Authenticity Source: ${authenticity.source}\n` +
+    `Educational Caution: ${authenticity.caution || 'None'}\n` +
     `Hadith (Arabic): ${arabicFull}\n` +
     `Hadith (English): ${snippet}`;
 
   const educationalSystemPrompt =
     `You are a careful educational assistant for laymen studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
     `Output exactly these two sections in order and nothing else:\n` +
-    `Commentary: Give a comprehensive but concise educational explanation. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and practical benefit for laymen. Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
+    `Commentary: Give a comprehensive but concise educational explanation. If Educational Caution is not "None", begin with that caution in one short sentence. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and practical benefit for laymen. Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
     `Chain of Narrators: extract narrator names from the Arabic text and transliterate into English, separated by ->. Do not evaluate, grade, praise, weaken, authenticate, or criticize the chain or narrators.\n` +
-    `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not independently grade hadith chains. Do not call narrators weak, thiqah, majhul, liar, disconnected, or similar. If unsure, keep the chain list simple and say "No chain."`;
+    `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not create an Authenticity Status section. The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed. If unsure, keep the chain list simple and say "No chain."`;
 
   try {
     let raw = await callOpenRouter([
@@ -460,7 +587,10 @@ pruneAiCallTracker();
     const payload = {
       commentary: commentaryMatch && commentaryMatch[1].trim() ? commentaryMatch[1].trim() : 'No commentary.',
       chain:      chainMatch && chainMatch[1].trim() ? chainMatch[1].trim() : 'No chain.',
-      evaluation: ''
+      evaluation: '',
+      authenticityStatus: authenticity.status,
+      authenticitySource: authenticity.source,
+      sourceCaution: authenticity.caution
     };
 
     
@@ -483,9 +613,9 @@ app.post('/narrator-bio', async (req, res) => {
     const educationalBioPrompt = `
 You are an educational assistant helping laymen learn basic hadith narrator context.
 
-The user will give one narrator name. Return a concise Markdown summary using **bold labels only** and no bullet points, code fences, or jarh-ta'dil judgments.
+The user will give one narrator name. Return a concise Markdown summary using **bold labels only** and no bullet points, code fences, scholarly dispute analysis, or narrator authenticity discussion.
 
-Do not describe narrators as weak, thiqah, liar, majhul, fabricator, abandoned, or similar grading terms unless that information comes from structured local data provided by this application in the future. No such structured data is provided in this request.
+Keep the biography simple and educational. Focus on the narrator's role in hadith transmission, importance in Islamic learning, connection to major scholars or companions, and historical significance.
 
 If the narrator is unclear or too ambiguous, respond:
 **Narrator unclear:** [brief beginner-friendly reason]
@@ -497,7 +627,7 @@ Use this exact format:
 **Teachers:** [Known teachers, or "Not listed in this summary"]
 **Students:** [Known students, or "Not listed in this summary"]
 **Collections:** [Major hadith collections where this narrator appears when known, or "Not specified in this summary"]
-**Educational Role:** [2-3 beginner-friendly sentences about why the narrator matters in hadith transmission without grading or jarh-ta'dil judgments]
+**Educational Importance:** [2-3 beginner-friendly sentences about why the narrator matters in hadith transmission and Islamic learning]
 **Disclaimer:** This educational summary may be incomplete and is not a full scholarly biography. Verify details with classical rijal sources.
     `.trim();
 
