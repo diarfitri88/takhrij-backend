@@ -22,6 +22,7 @@ const MAX_TEXT_FIELD_LENGTH = 4000;
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const COMMENTARY_CACHE_VERSION = 'explicit-source-grading-v2';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -280,6 +281,17 @@ function inferCollectionFromReference(reference = '') {
   return '';
 }
 
+function normalizeArabicForDetection(value = '') {
+  return String(value)
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[إأآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function findHadithByReference(reference, collection) {
   const collectionKey = normalizeCollectionKey(collection || inferCollectionFromReference(reference));
   const referenceText = String(reference || '').toLowerCase();
@@ -322,29 +334,35 @@ function extractAuthenticityStatus(h, collection) {
   ].filter(Boolean).join(' ');
 
   const sourceText = `${explicitFields} ${getEnglishText(h || {})} ${h?.arabic || ''}`;
+  const normalizedArabicSource = normalizeArabicForDetection(sourceText);
   const source = explicitFields ? 'structured source field' : 'explicit source text';
   const hasExplicitWeakPhrase =
     /\b(?:da['‘’]?if|daeef|weak)\b/i.test(explicitFields) ||
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?(?:da['‘’]?if|daeef|weak)\b/i.test(sourceText) ||
     /\b(?:da['‘’]?if|daeef|weak)\s*\)/i.test(sourceText) ||
-    /ه[ٰذ]ا\s+حديث\s+ضعيف/.test(sourceText) ||
-    /ضعفه\s+الألباني/.test(sourceText) ||
-    /لا\s+يصح/.test(sourceText);
+    /ه(?:ذا|اذه)?\s*حديث\s+ضعيف/.test(normalizedArabicSource) ||
+    /اسناده\s+ضعيف/.test(normalizedArabicSource) ||
+    /ضعفه(?:\s+الالباني)?/.test(normalizedArabicSource) ||
+    /لا\s+يصح/.test(normalizedArabicSource);
   const hasExplicitHasanSahihPhrase =
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\s+sahih\b/i.test(sourceText) ||
     /\bhasan\s+sahih\b/i.test(explicitFields) ||
-    /حسن\s+صحيح/.test(sourceText);
+    /حسن\s+صحيح/.test(normalizedArabicSource);
   const hasExplicitSahihPhrase =
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?sahih\b/i.test(sourceText) ||
     /\bsahih\s*\)/i.test(sourceText) ||
     /\bsahih\b/i.test(explicitFields) ||
-    /صححه\s+الألباني/.test(sourceText) ||
-    /ه[ٰذ]ا\s+حديث\s+صحيح/.test(sourceText);
+    /صححه(?:\s+الالباني)?/.test(normalizedArabicSource) ||
+    /ه(?:ذا|اذه)?\s*حديث\s+صحيح/.test(normalizedArabicSource);
   const hasExplicitHasanPhrase =
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\b/i.test(sourceText) ||
     /\bhasan\s*\)/i.test(sourceText) ||
     /\bhasan\b/i.test(explicitFields) ||
-    /ه[ٰذ]ا\s+حديث\s+حسن/.test(sourceText);
+    /ه(?:ذا|اذه)?\s*حديث\s+حسن/.test(normalizedArabicSource);
+  const hasExplicitGharibPhrase =
+    /\bgharib\b/i.test(explicitFields) ||
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?gharib\b/i.test(sourceText) ||
+    /ه(?:ذا|اذه)?\s*حديث\s+غريب/.test(normalizedArabicSource);
 
   // This only surfaces explicit grading phrases already present in local/source data; GPT is not asked to grade.
   if (hasExplicitWeakPhrase) {
@@ -365,6 +383,10 @@ function extractAuthenticityStatus(h, collection) {
 
   if (hasExplicitHasanPhrase) {
     return { status: 'Hasan (mentioned in source text)', source, caution: '' };
+  }
+
+  if (hasExplicitGharibPhrase) {
+    return { status: 'Gharib (mentioned in source text)', source, caution: '' };
   }
 
   return {
@@ -612,7 +634,7 @@ app.post('/gpt-commentary', async (req, res) => {
     });
   }
 
-  const cacheKey = `${reference}|${collection}`;
+  const cacheKey = `${COMMENTARY_CACHE_VERSION}|${reference}|${collection}`;
   const ip = getClientIp(req);
   const cachedCommentary = getCachedCommentary(cacheKey);
  if (cachedCommentary) {
