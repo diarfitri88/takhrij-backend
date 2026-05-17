@@ -322,35 +322,49 @@ function extractAuthenticityStatus(h, collection) {
   ].filter(Boolean).join(' ');
 
   const sourceText = `${explicitFields} ${getEnglishText(h || {})} ${h?.arabic || ''}`;
-  const source = explicitFields ? 'structured source field' : 'source text';
+  const source = explicitFields ? 'structured source field' : 'explicit source text';
+  const hasExplicitWeakPhrase =
+    /\b(?:da['‘’]?if|daeef|weak)\b/i.test(explicitFields) ||
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?(?:da['‘’]?if|daeef|weak)\b/i.test(sourceText) ||
+    /\b(?:da['‘’]?if|daeef|weak)\s*\)/i.test(sourceText) ||
+    /ه[ٰذ]ا\s+حديث\s+ضعيف/.test(sourceText) ||
+    /ضعفه\s+الألباني/.test(sourceText) ||
+    /لا\s+يصح/.test(sourceText);
+  const hasExplicitHasanSahihPhrase =
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\s+sahih\b/i.test(sourceText) ||
+    /\bhasan\s+sahih\b/i.test(explicitFields) ||
+    /حسن\s+صحيح/.test(sourceText);
+  const hasExplicitSahihPhrase =
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?sahih\b/i.test(sourceText) ||
+    /\bsahih\s*\)/i.test(sourceText) ||
+    /\bsahih\b/i.test(explicitFields) ||
+    /صححه\s+الألباني/.test(sourceText) ||
+    /ه[ٰذ]ا\s+حديث\s+صحيح/.test(sourceText);
+  const hasExplicitHasanPhrase =
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\b/i.test(sourceText) ||
+    /\bhasan\s*\)/i.test(sourceText) ||
+    /\bhasan\b/i.test(explicitFields) ||
+    /ه[ٰذ]ا\s+حديث\s+حسن/.test(sourceText);
 
-  // This only surfaces wording already present in local/source data; GPT is not asked to grade.
-  if (/\b(da['‘’]?if|daeef|weak)\b/i.test(sourceText) || /ضعيف/.test(sourceText)) {
+  // This only surfaces explicit grading phrases already present in local/source data; GPT is not asked to grade.
+  if (hasExplicitWeakPhrase) {
     return {
-      status: "Weak (Da'if)",
+      status: "Weak (mentioned in source text)",
       source,
-      caution: 'This source text includes a weakness/caution note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+      caution: 'This source text includes an explicit weakness note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
     };
   }
 
-  if (/\bdisputed\b|\bdiffer(?:ed|ence|s)?\b|\bnot established\b/i.test(sourceText) || /اختلاف|اختلف|لم يثبت/.test(sourceText)) {
-    return {
-      status: 'Disputed or cautioned in source',
-      source,
-      caution: 'This source text includes a dispute or caution note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
-    };
+  if (hasExplicitHasanSahihPhrase) {
+    return { status: 'Hasan Sahih (mentioned in source text)', source, caution: '' };
   }
 
-  if (/\bhasan\s+sahih\b|\bsahih\s+hasan\b/i.test(sourceText) || /حسن صحيح/.test(sourceText)) {
-    return { status: 'Hasan Sahih', source, caution: '' };
+  if (hasExplicitSahihPhrase) {
+    return { status: 'Sahih (mentioned in source text)', source, caution: '' };
   }
 
-  if (/\bsahih\b/i.test(sourceText) || /صحيح/.test(sourceText)) {
-    return { status: 'Sahih', source, caution: '' };
-  }
-
-  if (/\bhasan\b/i.test(sourceText) || /حسن/.test(sourceText)) {
-    return { status: 'Hasan', source, caution: '' };
+  if (hasExplicitHasanPhrase) {
+    return { status: 'Hasan (mentioned in source text)', source, caution: '' };
   }
 
   return {
@@ -362,30 +376,54 @@ function extractAuthenticityStatus(h, collection) {
 
 function sanitizeNarratorBio(rawBio = '') {
   const forbiddenPattern = /\b(scholarly remarks|jarh|ta['‘’]?dil|grading|grade|graded|authenticity|trustworthy|reliable|unreliable|weak|thiqah|liar|fabricator|majhul|abandoned|criticism|dispute|disputed)\b/i;
-  const allowedLabels = new Set([
-    'name',
+  const allowedLabels = [
     'era/generation',
     'teachers',
     'students',
     'collections',
     'known for',
-    'educational importance',
-    'disclaimer',
-    'narrator unclear'
-  ]);
+    'educational importance'
+  ];
+  const sectionValues = new Map();
+  let currentLabel = null;
 
-  return String(rawBio)
+  String(rawBio)
     .replace(/```[\s\S]*?```/g, '')
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean)
-    .filter(line => {
+    .forEach(line => {
       const labelMatch = line.match(/^\*\*([^:*]+):\*\*/);
-      if (labelMatch && !allowedLabels.has(labelMatch[1].trim().toLowerCase())) {
-        return false;
+      if (labelMatch) {
+        const label = labelMatch[1].trim().toLowerCase();
+        currentLabel = allowedLabels.includes(label) ? label : null;
+
+        if (currentLabel) {
+          const value = line.replace(/^\*\*[^:*]+:\*\*\s*/, '').trim();
+          if (value && !forbiddenPattern.test(value)) {
+            sectionValues.set(currentLabel, value);
+          }
+        }
+        return;
       }
-      return !forbiddenPattern.test(line);
-    })
+
+      if (currentLabel && !forbiddenPattern.test(line)) {
+        const existing = sectionValues.get(currentLabel);
+        sectionValues.set(currentLabel, existing ? `${existing} ${line}` : line);
+      }
+    });
+
+  const preferredKnownFor = sectionValues.get('known for') || sectionValues.get('educational importance');
+  const safeSections = [
+    ['Era/Generation', sectionValues.get('era/generation') || 'Not specified in this summary'],
+    ['Teachers', sectionValues.get('teachers') || 'Not listed in this summary'],
+    ['Students', sectionValues.get('students') || 'Not listed in this summary'],
+    ['Collections', sectionValues.get('collections') || 'Not specified in this summary'],
+    ['Known For', preferredKnownFor || 'Educational role not specified in this summary']
+  ];
+
+  return safeSections
+    .map(([label, value]) => `**${label}:** ${value}`)
     .join('\n');
 }
 
@@ -651,22 +689,19 @@ app.post('/narrator-bio', async (req, res) => {
     const educationalBioPrompt = `
 You are an educational assistant helping laymen learn basic hadith narrator context.
 
-The user will give one narrator name. Return a concise Markdown summary using **bold labels only** and no bullet points, code fences, scholarly dispute analysis, or narrator authenticity discussion.
+The user will give one narrator name. Return a concise Markdown summary using **bold labels only** and no bullet points, code fences, scholar evaluation commentary, or narrator authenticity discussion.
 
 Keep the biography simple and educational. Focus only on historical role, importance in hadith transmission, connection to major scholars or companions, and educational significance. Do not evaluate whether the narrator's reports are accepted or rejected.
 
-If the narrator is unclear or too ambiguous, respond:
-**Narrator unclear:** [brief beginner-friendly reason]
+If the narrator is unclear or too ambiguous, fill the fields below with "Not specified in this summary".
 
 Use this exact format:
 
-**Name:** [Full name or best-known name]
 **Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
 **Teachers:** [Known teachers, or "Not listed in this summary"]
 **Students:** [Known students, or "Not listed in this summary"]
 **Collections:** [Major hadith collections where this narrator appears when known, or "Not specified in this summary"]
 **Known For:** [2-3 beginner-friendly sentences about historical role, hadith transmission, Islamic learning, and educational significance]
-**Disclaimer:** This educational summary may be incomplete and is not a full scholarly biography. Verify details with classical rijal sources.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
