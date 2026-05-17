@@ -204,7 +204,9 @@ async function loadHadiths() {
     console.error("❌ Failed to load hadiths:", err.message);
   }
 }
-loadHadiths();
+if (require.main === module) {
+  loadHadiths();
+}
 
 const names = {
   bukhari:   "Sahih Bukhari",
@@ -284,9 +286,10 @@ function inferCollectionFromReference(reference = '') {
 function normalizeArabicForDetection(value = '') {
   return String(value)
     .replace(/[\u064B-\u065F\u0670]/g, '')
-    .replace(/[إأآ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
+    .replace(/[\u0625\u0623\u0622]/g, '\u0627')
+    .replace(/\u0649/g, '\u064a')
+    .replace(/\u0629/g, '\u0647')
+    .replace(/\u0640/g, '')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -311,7 +314,7 @@ function findHadithByReference(reference, collection) {
   }) || null;
 }
 
-function extractAuthenticityStatus(h, collection) {
+function extractAuthenticityStatus(h, collection, sourceOverride = '') {
   const collectionKey = normalizeCollectionKey(collection || h?.collection);
 
   if (['bukhari', 'muslim'].includes(collectionKey)) {
@@ -333,7 +336,7 @@ function extractAuthenticityStatus(h, collection) {
     h?.english?.classification
   ].filter(Boolean).join(' ');
 
-  const sourceText = `${explicitFields} ${getEnglishText(h || {})} ${h?.arabic || ''}`;
+  const sourceText = `${explicitFields} ${getEnglishText(h || {})} ${h?.arabic || ''} ${sourceOverride}`;
   const normalizedArabicSource = normalizeArabicForDetection(sourceText);
   const source = explicitFields ? 'structured source field' : 'explicit source text';
   const arabicHas = pattern => new RegExp(pattern).test(normalizedArabicSource);
@@ -664,10 +667,9 @@ if (matches === null) {
     : '';
 
   const safeFallbackResult =
-    `---\nEnglish Matn:\nNo verified hadith result was found in the local indexed collections for "${fallbackQuery}". This fallback is not an authenticated hadith result and does not grade the report as sahih, hasan, weak, fabricated, or authentic.${yaSinFallbackNote}\n\n` +
+    `---\nEnglish Matn:\nNo verified local match was found for "${fallbackQuery}". Try searching exact Arabic or English wording from the narration.${yaSinFallbackNote}\n\n` +
     `Reference: AI Generated\n` +
-    `Authenticity Status: Not a verified source result\n` +
-    `Note: Search exact Arabic or English phrases from the narration when possible. If the topic involves a specific virtue, reward, or practice, verify it against the source text and qualified scholarship.`;
+    `Note: For virtue or reward topics, check the source grading carefully before relying on a specific claim.`;
 
   return res.json({ result: safeFallbackResult });
  }
@@ -720,7 +722,11 @@ if (!checkAiLimit(ip)) {
 pruneAiCallTracker();
   const snippet = truncate(englishFull, 500);
   const sourceHadith = findHadithByReference(reference, collection);
-  const authenticity = extractAuthenticityStatus(sourceHadith, collection || inferCollectionFromReference(reference));
+  const authenticity = extractAuthenticityStatus(
+    sourceHadith,
+    collection || inferCollectionFromReference(reference),
+    `${arabicFull} ${englishFull}`
+  );
   const weakReportCaution = needsWeakReportCaution(authenticity.status)
     ? buildWeakReportCaution(authenticity.status)
     : '';
@@ -843,4 +849,12 @@ app.get("/health", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Takhrij backend running on port ${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Takhrij backend running on port ${PORT}`));
+}
+
+module.exports = {
+  app,
+  extractAuthenticityStatus,
+  normalizeArabicForDetection
+};
