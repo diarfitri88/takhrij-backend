@@ -657,6 +657,81 @@ function searchHadiths(query) {
   return results.slice(0, 10).map(r => r.item.hadith);
 }
 
+function extractSuggestionPhrase(h, queryKeywords = []) {
+  const english = normalize(getEnglishText(h));
+  const arabic = normalizeArabicForDetection(h?.arabic || '');
+  const source = `${english} ${arabic}`.trim();
+  const words = source.match(/[\p{L}\p{N}]+/gu) || [];
+
+  if (!words.length) return '';
+
+  const querySet = new Set(queryKeywords.map(normalize));
+  const matchingIndex = words.findIndex(word => querySet.has(normalize(word)));
+  const startIndex = matchingIndex === -1 ? 0 : matchingIndex;
+  const phraseWords = words
+    .slice(startIndex, startIndex + 5)
+    .filter(word => word.length > 2 && !STOP_WORDS.has(word.toLowerCase()));
+
+  return phraseWords.slice(0, 5).join(' ').trim();
+}
+
+function buildDidYouMeanSuggestions(query) {
+  if (!fuse) return [];
+
+  const q = normalize(query);
+  const keywords = extractKeywords(query);
+  const suggestions = new Set();
+
+  fuse.search(q)
+    .filter(r => r.score <= 0.6)
+    .slice(0, 20)
+    .forEach(r => {
+      const phrase = extractSuggestionPhrase(r.item.hadith, keywords);
+      if (phrase) suggestions.add(phrase);
+    });
+
+  if (suggestions.size < 5 && keywords.length) {
+    allHadithsCache
+      .map(h => {
+        const text = `${normalize(getEnglishText(h))} ${normalize(h.arabic || '')}`;
+        const overlap = keywords.filter(keyword => text.includes(keyword)).length;
+        return { h, overlap };
+      })
+      .filter(item => item.overlap > 0)
+      .sort((a, b) => b.overlap - a.overlap)
+      .slice(0, 20)
+      .forEach(({ h }) => {
+        const phrase = extractSuggestionPhrase(h, keywords);
+        if (phrase) suggestions.add(phrase);
+      });
+  }
+
+  return [...suggestions]
+    .filter(suggestion =>
+      suggestion.length >= 4 &&
+      suggestion.toLowerCase() !== q &&
+      !/\b(?:sahih|hasan|weak|authentic|fabricated|albani|hajar|graded|grading)\b/i.test(suggestion)
+    )
+    .slice(0, 5);
+}
+
+function formatDidYouMeanFallback(query, suggestions = []) {
+  const cleanQuery = String(query || '').trim();
+  const cleanSuggestions = suggestions
+    .map(suggestion => String(suggestion || '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const suggestionText = cleanSuggestions.length
+    ? `\n\nDid you mean:\n${cleanSuggestions.map(suggestion => `• ${suggestion}`).join('\n')}`
+    : '';
+
+  return `---\nEnglish Matn:\nNo verified match found for "${cleanQuery}".${suggestionText}\n\n` +
+    `Try exact Arabic or English wording for better results.\n\n` +
+    `This result is not a hadith verification or grading.\n\n` +
+    `Reference: AI Generated\n` +
+    `Note: No local hadith result was matched.`;
+}
+
 // ─── 6) SEARCH ENDPOINT ───────────────────────────────────────────────────────
 app.post("/search-hadith", async (req, res) => {
   const q = cleanInput(req.body.query, MAX_QUERY_LENGTH);
@@ -690,25 +765,16 @@ if (matches === null) {
     }).join("\n");
     return res.json({ result });
  } else {
-  // Safe fallback: no model-generated grading or authentication when local search has no source match.
+  // Local-only fallback: suggest better search phrases without calling GPT or grading anything.
   const fallbackQuery = (req.body.query || '').trim();
   if (!fallbackQuery) {
     return res.json({ result: 'No query provided.' });
   }
 
-  const yaSinFallbackNote = /\b(?:ya\s*sin|yasin|yaa\s*seen|yaseen)\b/i.test(fallbackQuery)
-    ? '\n\nVirtue and reward narrations require careful source checking. Try searching the exact wording from the narration.'
-    : '';
-
-  const safeFallbackResult =
-    `---\nEnglish Matn:\nNo verified local match was found for "${fallbackQuery}".\n\n` +
-    `Try searching:\n` +
-    `• exact Arabic wording\n` +
-    `• exact English wording\n` +
-    `• fewer key phrases\n\n` +
-    `This result is not a hadith verification or grading.${yaSinFallbackNote}\n\n` +
-    `Reference: AI Generated\n` +
-    `Note: No local hadith result was matched.`;
+  const safeFallbackResult = formatDidYouMeanFallback(
+    fallbackQuery,
+    buildDidYouMeanSuggestions(fallbackQuery)
+  );
 
   return res.json({ result: safeFallbackResult });
  }
@@ -896,5 +962,6 @@ module.exports = {
   app,
   extractAuthenticityStatus,
   normalizeArabicForDetection,
-  sanitizeNarratorChain
+  sanitizeNarratorChain,
+  formatDidYouMeanFallback
 };
