@@ -402,11 +402,11 @@ app.post('/gpt-commentary', async (req, res) => {
   const reference   = cleanInput(req.body.reference, 200);
   const collection  = cleanInput(req.body.collection, 40).toLowerCase();
 
-  // Defensive: Always return all 3 fields
+  // Keep the evaluation key for older clients, but do not ask AI to grade hadith chains.
   const errorPayload = {
     commentary: 'No commentary.',
     chain: 'No chain.',
-    evaluation: 'No evaluation.'
+    evaluation: ''
   };
 
   if (!englishFull || !arabicFull || !reference || !collection) {
@@ -433,63 +433,35 @@ if (!checkAiLimit(ip)) {
 }
 pruneAiCallTracker();
   const snippet = truncate(englishFull, 500);
-  const systemPrompt =
-    `You are a specialist in Hadith sciences, trained on the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, as well as classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n` +
-    `Output exactly these three sections in order and nothing else:\n` +
-    `Commentary: 3–4 sentences explaining con, meaning, and importance but **do not comment on the chain** here. If the hadith is from Sahih Bukhari, base the explanation on Fath al-Bari by Ibn Hajar. If the hadith is from Sahih Muslim, base the explanation on Sharh of Imam Nawawi. If neither is available, provide a general con explanation from the known Sunnah.\n` +
-    `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
-    `Evaluation of Hadith: - Provide a **brief but accurate** analysis of the chain's strength or weakness, based **only on the known status of narrators**. 
-    - If a narrator is known to be weak, explicitly mention it and why (e.g., "X is considered weak by Al-Albani").
-    - If there is a known disconnection (e.g., mursal, missing link), say it clearly.
-    - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**, if the hadith is widely narrated by multiple companions across different chains, mention: 'Classification: Mutawatir'. Otherwise, consider it Ahad.
-    - For each narrator, verify based on rijāl data and known historical lifespans whether he could have met the next. If any could not (e.g., one died decades before the next was born), explicitly state: “Chain is disconnected (munqati‘) between X and Y due to non-overlapping lifespans.”
-    - If a narrator is unknown or not recorded in the major rijal works, explicitly note: “X is majhul (unknown narrator),” then classify the hadith as da‘if gharib if that is the only route.   
-    - Do not assume chain continuity unless clearly verified by classical hadith scholars or reliable rijāl data.
-    - If a narrator's status is unknown, say: "Status of [name] is unclear."
-    - But do not label a chain “munqati‘” unless you have clear evidence (e.g. a known death-before-birth gap). If the only problem is a majhul narrator, call it majhul—not munqati.
-    - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
-  
-  Only classify a hadith as Qudsi, Marfu', or Mawquf if it is clearly indicated by its wording or attribution:
-- **Hadith Qudsi**: Classify as “Hadith Qudsi” if the Prophet is narrating words from Allah (ﷻ), whether directly or indirectly. This includes:
-  • If the hadith begins with “Allah said” (e.g., قال الله).
-  • If it says: “The Prophet narrated from his Lord” (e.g., يرويه عن ربه).
-  • Phrases like: “My Lord said...”, “It is reported from Allah...”, or “Allah, the Blessed and Exalted, said...”.
-  These are not from the Qur’an, but are divine speech reported through the Prophet ﷺ.
-- **Marfu’**: Statement directly traced to the Prophet ﷺ.
-- **Mawquf**: Statement only traced to a Companion.
-- If unclear after reasonable effort, say: "Classification of Qudsi, Marfu’, or Mawquf not specified."
-
-    Finally, conclude the Evaluation section with a separate paragraph titled "Fiqh Ruling:", summarizing the legal ruling derived from this hadith based on known Salafi fiqh principles (e.g., Ibn Baz, Ibn Uthaymeen) without naming “Salafi”. (e.g., wajib, mustahabb, makruh, haram). If scholars differ, briefly mention the strongest opinion and why. Be concise, precise, and avoid fabricating any sources or narrators`;
-
   const userPrompt =
     `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
     `Hadith (Arabic): ${arabicFull}\n` +
     `Hadith (English): ${snippet}`;
 
+  const educationalSystemPrompt =
+    `You are a careful educational assistant for laymen studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
+    `Output exactly these two sections in order and nothing else:\n` +
+    `Commentary: Give a comprehensive but concise educational explanation. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and practical benefit for laymen. Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
+    `Chain of Narrators: extract narrator names from the Arabic text and transliterate into English, separated by ->. Do not evaluate, grade, praise, weaken, authenticate, or criticize the chain or narrators.\n` +
+    `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not independently grade hadith chains. Do not call narrators weak, thiqah, majhul, liar, disconnected, or similar. If unsure, keep the chain list simple and say "No chain."`;
+
   try {
     let raw = await callOpenRouter([
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: educationalSystemPrompt },
       { role: 'user',   content: userPrompt }
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
 
-    // More forgiving regex:
+    // Parse only educational commentary and narrator-chain text; grading/fiqh sections are intentionally ignored.
     const commentaryMatch = raw.match(/Commentary[^:]*:\s*([\s\S]*?)(?=Chain of Narrators[^:]*:)/i);
-    const chainMatch      = raw.match(/Chain of Narrators[^:]*:\s*([\s\S]*?)(?=Evaluation[^:]*:)/i);
-    const evalMatch       = raw.match(/Evaluation[^:]*:\s*([\s\S]*)/i);
+    const chainMatch      = raw.match(/Chain of Narrators[^:]*:\s*([\s\S]*)/i);
 
     const payload = {
       commentary: commentaryMatch && commentaryMatch[1].trim() ? commentaryMatch[1].trim() : 'No commentary.',
       chain:      chainMatch && chainMatch[1].trim() ? chainMatch[1].trim() : 'No chain.',
-      evaluation: evalMatch && evalMatch[1].trim() ? evalMatch[1].trim() : 'No evaluation.'
+      evaluation: ''
     };
-
- if (['bukhari', 'muslim'].includes(collection)) {
-  if (!payload.evaluation.toLowerCase().includes('chain is sound and reliable by default')) {
-    payload.evaluation += '\nChain is sound and reliable by default.';
-  }
-}
 
     
     setCachedCommentary(cacheKey, payload);
@@ -508,36 +480,30 @@ app.post('/narrator-bio', async (req, res) => {
       return res.json({ bio: 'No narrator name provided.' });
     }
 
-    // 1) System prompt: instructions only, no name interpolation
-    const systemPrompt = `
-You are a Salafi-trained hadith researcher. The user will give you the name of a narrator. Respond with a structured biography in Markdown using **bold labels only**—no code fences, no bullet points.
+    const educationalBioPrompt = `
+You are an educational assistant helping laymen learn basic hadith narrator context.
 
-Only include confirmed narrators found in the major hadith chains from the 9 primary books: Bukhari, Muslim, Abu Dawood, Tirmidhi, Nasai, Ibn Majah, Ahmad, Malik, and Darimi.
+The user will give one narrator name. Return a concise Markdown summary using **bold labels only** and no bullet points, code fences, or jarh-ta'dil judgments.
 
-If the narrator is unclear, ambiguous, or not found in the classical rijal books, respond exactly in this format:  
-**Narrator unclear:** [Brief reason why the narrator is not known or verified]
+Do not describe narrators as weak, thiqah, liar, majhul, fabricator, abandoned, or similar grading terms unless that information comes from structured local data provided by this application in the future. No such structured data is provided in this request.
+
+If the narrator is unclear or too ambiguous, respond:
+**Narrator unclear:** [brief beginner-friendly reason]
 
 Use this exact format:
 
-**Name:** [Full name]  
-**Birth:** [Hijri year or estimate]  
-**Death:** [Hijri year]  
-**Era:** [e.g. Sahabi, Tabi'i, Tabi' al-Tabi'in]  
-
-**Teachers:** [List at least 3–5 known teachers]  
-
-**Students:** [List at least 3–5 known students]  
-
-**Scholarly Remarks:** Summarize what other major scholars said (e.g. Al-Dhahabi, Yahya ibn Ma’in, Al-Nasa’i, Ibn Sa’d, Ibn Hajar, al-Albani).  
-If any disagreement exists, explain clearly but briefly.  
-End with a clarifying statement if Ibn Hajar maintained his grading in Taqrib al-Tahdib despite criticism.
-
-Now return the full biography for the narrator provided by the user.
+**Name:** [Full name or best-known name]
+**Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
+**Teachers:** [Known teachers, or "Not listed in this summary"]
+**Students:** [Known students, or "Not listed in this summary"]
+**Collections:** [Major hadith collections where this narrator appears when known, or "Not specified in this summary"]
+**Educational Role:** [2-3 beginner-friendly sentences about why the narrator matters in hadith transmission without grading or jarh-ta'dil judgments]
+**Disclaimer:** This educational summary may be incomplete and is not a full scholarly biography. Verify details with classical rijal sources.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
     const messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: educationalBioPrompt },
       { role: 'user',   content: name }
     ];
 
