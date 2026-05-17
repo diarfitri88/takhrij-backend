@@ -248,8 +248,10 @@ function normalizeCollectionKey(value = '') {
   const aliases = {
     bukhari: 'bukhari',
     sahihbukhari: 'bukhari',
+    sahihalbukhari: 'bukhari',
     muslim: 'muslim',
     sahihmuslim: 'muslim',
+    sahihalmuslim: 'muslim',
     tirmidhi: 'tirmidhi',
     jamitirmidhi: 'tirmidhi',
     nasai: 'nasai',
@@ -271,8 +273,15 @@ function normalizeCollectionKey(value = '') {
   return aliases[input] || value;
 }
 
+function inferCollectionFromReference(reference = '') {
+  const normalized = String(reference).toLowerCase();
+  if (normalized.includes('bukhari')) return 'bukhari';
+  if (normalized.includes('muslim')) return 'muslim';
+  return '';
+}
+
 function findHadithByReference(reference, collection) {
-  const collectionKey = normalizeCollectionKey(collection);
+  const collectionKey = normalizeCollectionKey(collection || inferCollectionFromReference(reference));
   const referenceText = String(reference || '').toLowerCase();
   const referenceNumber = (referenceText.match(/\d+/g) || []).pop();
 
@@ -295,7 +304,7 @@ function extractAuthenticityStatus(h, collection) {
 
   if (['bukhari', 'muslim'].includes(collectionKey)) {
     return {
-      status: 'Sahih',
+      status: 'Sahih by collection',
       source: `${names[collectionKey]} collection metadata`,
       caution: ''
     };
@@ -349,6 +358,35 @@ function extractAuthenticityStatus(h, collection) {
     source: 'available source metadata/text',
     caution: ''
   };
+}
+
+function sanitizeNarratorBio(rawBio = '') {
+  const forbiddenPattern = /\b(scholarly remarks|jarh|ta['‘’]?dil|grading|grade|graded|authenticity|trustworthy|reliable|unreliable|weak|thiqah|liar|fabricator|majhul|abandoned|criticism|dispute|disputed)\b/i;
+  const allowedLabels = new Set([
+    'name',
+    'era/generation',
+    'teachers',
+    'students',
+    'collections',
+    'known for',
+    'educational importance',
+    'disclaimer',
+    'narrator unclear'
+  ]);
+
+  return String(rawBio)
+    .replace(/```[\s\S]*?```/g, '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => {
+      const labelMatch = line.match(/^\*\*([^:*]+):\*\*/);
+      if (labelMatch && !allowedLabels.has(labelMatch[1].trim().toLowerCase())) {
+        return false;
+      }
+      return !forbiddenPattern.test(line);
+    })
+    .join('\n');
 }
 
 // ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
@@ -556,7 +594,7 @@ if (!checkAiLimit(ip)) {
 pruneAiCallTracker();
   const snippet = truncate(englishFull, 500);
   const sourceHadith = findHadithByReference(reference, collection);
-  const authenticity = extractAuthenticityStatus(sourceHadith, collection);
+  const authenticity = extractAuthenticityStatus(sourceHadith, collection || inferCollectionFromReference(reference));
   const userPrompt =
     `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
@@ -615,7 +653,7 @@ You are an educational assistant helping laymen learn basic hadith narrator cont
 
 The user will give one narrator name. Return a concise Markdown summary using **bold labels only** and no bullet points, code fences, scholarly dispute analysis, or narrator authenticity discussion.
 
-Keep the biography simple and educational. Focus on the narrator's role in hadith transmission, importance in Islamic learning, connection to major scholars or companions, and historical significance.
+Keep the biography simple and educational. Focus only on historical role, importance in hadith transmission, connection to major scholars or companions, and educational significance. Do not evaluate whether the narrator's reports are accepted or rejected.
 
 If the narrator is unclear or too ambiguous, respond:
 **Narrator unclear:** [brief beginner-friendly reason]
@@ -627,7 +665,7 @@ Use this exact format:
 **Teachers:** [Known teachers, or "Not listed in this summary"]
 **Students:** [Known students, or "Not listed in this summary"]
 **Collections:** [Major hadith collections where this narrator appears when known, or "Not specified in this summary"]
-**Educational Importance:** [2-3 beginner-friendly sentences about why the narrator matters in hadith transmission and Islamic learning]
+**Known For:** [2-3 beginner-friendly sentences about historical role, hadith transmission, Islamic learning, and educational significance]
 **Disclaimer:** This educational summary may be incomplete and is not a full scholarly biography. Verify details with classical rijal sources.
     `.trim();
 
@@ -642,6 +680,7 @@ Use this exact format:
     // 3) Don’t strip bold markers—just remove code fences if they appear
     let raw = rawAi || '';
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
+    raw = sanitizeNarratorBio(raw);
 
     return res.json({ bio: raw });
   } catch (err) {
