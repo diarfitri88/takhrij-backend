@@ -22,7 +22,7 @@ const MAX_TEXT_FIELD_LENGTH = 4000;
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'explicit-source-grading-v3';
+const COMMENTARY_CACHE_VERSION = 'explicit-arabic-grading-v4';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -336,33 +336,39 @@ function extractAuthenticityStatus(h, collection) {
   const sourceText = `${explicitFields} ${getEnglishText(h || {})} ${h?.arabic || ''}`;
   const normalizedArabicSource = normalizeArabicForDetection(sourceText);
   const source = explicitFields ? 'structured source field' : 'explicit source text';
+  const arabicHas = pattern => new RegExp(pattern).test(normalizedArabicSource);
   const hasExplicitWeakPhrase =
     /\b(?:da['‘’]?if|daeef|weak)\b/i.test(explicitFields) ||
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?(?:da['‘’]?if|daeef|weak)\b/i.test(sourceText) ||
     /\b(?:da['‘’]?if|daeef|weak)\s*\)/i.test(sourceText) ||
-    /ه(?:ذا|اذه)?\s*حديث\s+ضعيف/.test(normalizedArabicSource) ||
-    /اسناده\s+ضعيف/.test(normalizedArabicSource) ||
-    /ضعفه(?:\s+الالباني)?/.test(normalizedArabicSource) ||
-    /لا\s+يصح/.test(normalizedArabicSource);
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u0636\\u0639\\u064a\\u0641') ||
+    arabicHas('\\u0627\\u0633\\u0646\\u0627\\u062f\\u0647\\s+\\u0636\\u0639\\u064a\\u0641') ||
+    arabicHas('\\u0636\\u0639\\u0641\\u0647');
+  const hasExplicitNotAuthenticPhrase =
+    arabicHas('\\u0644\\u0627\\s+\\u064a\\u0635\\u062d');
   const hasExplicitHasanSahihPhrase =
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\s+sahih\b/i.test(sourceText) ||
     /\bhasan\s+sahih\b/i.test(explicitFields) ||
-    /حسن\s+صحيح/.test(normalizedArabicSource);
+    arabicHas('\\u062d\\u0633\\u0646\\s+\\u0635\\u062d\\u064a\\u062d');
   const hasExplicitSahihPhrase =
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?sahih\b/i.test(sourceText) ||
     /\bsahih\s*\)/i.test(sourceText) ||
     /\bsahih\b/i.test(explicitFields) ||
-    /صححه(?:\s+الالباني)?/.test(normalizedArabicSource) ||
-    /ه(?:ذا|اذه)?\s*حديث\s+صحيح/.test(normalizedArabicSource);
+    arabicHas('\\u0635\\u062d\\u062d\\u0647') ||
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u0635\\u062d\\u064a\\u062d');
   const hasExplicitHasanPhrase =
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\b/i.test(sourceText) ||
     /\bhasan\s*\)/i.test(sourceText) ||
     /\bhasan\b/i.test(explicitFields) ||
-    /ه(?:ذا|اذه)?\s*حديث\s+حسن/.test(normalizedArabicSource);
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u062d\\u0633\\u0646');
   const hasExplicitGharibPhrase =
     /\bgharib\b/i.test(explicitFields) ||
     /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?gharib\b/i.test(sourceText) ||
-    /ه(?:ذا|اذه)?\s*حديث\s+غريب/.test(normalizedArabicSource);
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u063a\\u0631\\u064a\\u0628') ||
+    arabicHas('\\u0644\\u0627\\s+\\u0646\\u0639\\u0631\\u0641\\u0647\\s+\\u0627\\u0644\\u0627\\s+\\u0645\\u0646\\s+\\u0647\\u0630\\u0627\\s+\\u0627\\u0644\\u0648\\u062c\\u0647');
+  const hasExplicitCautionPhrase =
+    arabicHas('\\u0645\\u0646\\u0643\\u0631') ||
+    arabicHas('\\u0634\\u064a\\u062e\\s+\\u0645\\u062c\\u0647\\u0648\\u0644');
 
   // This only surfaces explicit grading phrases already present in local/source data; GPT is not asked to grade.
   if (hasExplicitWeakPhrase) {
@@ -370,6 +376,14 @@ function extractAuthenticityStatus(h, collection) {
       status: "Weak (explicitly mentioned in source text)",
       source,
       caution: 'This source text includes an explicit weakness note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+    };
+  }
+
+  if (hasExplicitNotAuthenticPhrase) {
+    return {
+      status: 'Not authentic (explicitly mentioned in source text)',
+      source,
+      caution: 'This source text includes an explicit authenticity caution. Treat the commentary as educational background only and verify religious use with qualified scholars.'
     };
   }
 
@@ -386,7 +400,15 @@ function extractAuthenticityStatus(h, collection) {
   }
 
   if (hasExplicitGharibPhrase) {
-    return { status: 'Gharib (mentioned in source text)', source, caution: '' };
+    return { status: 'Gharib (explicitly mentioned in source text)', source, caution: '' };
+  }
+
+  if (hasExplicitCautionPhrase) {
+    return {
+      status: 'Caution noted in source text',
+      source,
+      caution: 'This source text includes an explicit caution phrase. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+    };
   }
 
   return {
@@ -400,10 +422,14 @@ function sanitizeNarratorBio(rawBio = '') {
   const forbiddenPattern = /\b(scholarly remarks|jarh|ta['‘’]?dil|grading|grade|graded|authenticity|trustworthy|reliable|unreliable|weak|thiqah|liar|fabricator|majhul|abandoned|criticism|dispute|disputed)\b/i;
   const allowedLabels = [
     'era/generation',
+    'place/region',
+    'region',
     'teachers',
     'students',
     'collections',
     'known for',
+    'role in hadith transmission',
+    'educational note',
     'educational importance'
   ];
   const sectionValues = new Map();
@@ -439,14 +465,17 @@ function sanitizeNarratorBio(rawBio = '') {
   const preferredKnownFor = sectionValues.get('known for') || sectionValues.get('educational importance');
   const safeSections = [
     ['Era/Generation', sectionValues.get('era/generation')],
+    ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
+    ['Known For', preferredKnownFor],
+    ['Role in Hadith Transmission', sectionValues.get('role in hadith transmission')],
     ['Teachers', sectionValues.get('teachers')],
     ['Students', sectionValues.get('students')],
     ['Collections', sectionValues.get('collections')],
-    ['Known For', preferredKnownFor]
+    ['Educational Note', sectionValues.get('educational note')]
   ].filter(([, value]) => value && !isPlaceholder(value));
 
   if (!safeSections.length) {
-    return '**Known For:** Beginner-level historical information for this narrator is not available in this brief summary.';
+    return '**Educational Note:** Beginner-level historical information for this narrator is not available in this brief summary.';
   }
 
   return safeSections
@@ -725,10 +754,13 @@ If a detail is not known from your general knowledge, omit that detail instead o
 Use this exact format:
 
 **Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
+**Place/Region:** [City, region, or scholarly center if known]
+**Known For:** [1-2 beginner-friendly sentences about historical role or educational significance]
+**Role in Hadith Transmission:** [1-2 sentences about how this narrator connects reports, teachers, students, or collections]
 **Teachers:** [Known teachers, if known]
 **Students:** [Known students, if known]
 **Collections:** [Major hadith collections where this narrator appears when known]
-**Known For:** [3-4 beginner-friendly sentences about historical role, hadith transmission, Islamic learning, and educational significance]
+**Educational Note:** [A short layman-friendly note explaining why this narrator matters for learning hadith history]
     `.trim();
 
     // 2) Send the narrator’s name as the user message
