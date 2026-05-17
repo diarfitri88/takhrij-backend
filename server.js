@@ -492,6 +492,40 @@ function stripSectionHeading(text = '', headingPattern) {
     .trim();
 }
 
+function sanitizeNarratorChain(chain = '') {
+  const cleaned = String(chain || '')
+    .replace(/\*\*/g, '')
+    .replace(/\r\n/g, '\n')
+    .split(/\n\s*\n/)[0]
+    .split(/(?:Commentary|Explanation|Educational Commentary|Meaning|Evaluation of Hadith|Fiqh Ruling)\s*[:ï¼š-]?/i)[0]
+    .trim();
+
+  if (!cleaned || /^no chain\.?$/i.test(cleaned) || /^chain not available\.?$/i.test(cleaned)) {
+    return 'Chain not available';
+  }
+
+  const hasChainDelimiter = /(?:->|â†’|=>|,|;|،)/.test(cleaned);
+  if (!hasChainDelimiter) {
+    return 'Chain not available';
+  }
+
+  const sentencePattern = /[.!?]|\b(?:hadith|narration|report|meaning|lesson|benefit|reader|practice|authenticity|source|reward|virtue|specific|claim)\b/i;
+  const names = cleaned
+    .split(/\s*(?:->|â†’|=>|,|;|،)\s*/)
+    .map(name => name.replace(/^\d+\.\s*/, '').trim())
+    .filter(Boolean);
+
+  if (
+    names.length < 2 ||
+    names.length > 20 ||
+    names.some(name => name.length > 55 || sentencePattern.test(name) || /\s{2,}/.test(name))
+  ) {
+    return 'Chain not available';
+  }
+
+  return names.join(' -> ');
+}
+
 function parseAiCommentary(raw = '') {
   const cleaned = String(raw || '').replace(/```[\s\S]*?```/g, '').trim();
   const commentaryHeading = '(?:Commentary|Explanation|Educational Commentary|Meaning)';
@@ -504,7 +538,7 @@ function parseAiCommentary(raw = '') {
 
   const commentaryMatch = cleaned.match(commentaryRegex);
   const chainMatch = cleaned.match(chainRegex);
-  const chain = chainMatch?.[1]?.trim() || 'No chain.';
+  const chain = sanitizeNarratorChain(chainMatch?.[1] || '');
 
   let commentary = commentaryMatch?.[1]?.trim() || '';
   if (!commentary) {
@@ -663,13 +697,18 @@ if (matches === null) {
   }
 
   const yaSinFallbackNote = /\b(?:ya\s*sin|yasin|yaa\s*seen|yaseen)\b/i.test(fallbackQuery)
-    ? ' For Ya Sin virtue reports or specific rewards, check the source grading carefully and do not treat the fallback as confirmation.'
+    ? '\n\nVirtue and reward narrations require careful source checking. Try searching the exact wording from the narration.'
     : '';
 
   const safeFallbackResult =
-    `---\nEnglish Matn:\nNo verified local match was found for "${fallbackQuery}". Try searching exact Arabic or English wording from the narration.${yaSinFallbackNote}\n\n` +
+    `---\nEnglish Matn:\nNo verified local match was found for "${fallbackQuery}".\n\n` +
+    `Try searching:\n` +
+    `• exact Arabic wording\n` +
+    `• exact English wording\n` +
+    `• fewer key phrases\n\n` +
+    `This result is not a hadith verification or grading.${yaSinFallbackNote}\n\n` +
     `Reference: AI Generated\n` +
-    `Note: For virtue or reward topics, check the source grading carefully before relying on a specific claim.`;
+    `Note: No local hadith result was matched.`;
 
   return res.json({ result: safeFallbackResult });
  }
@@ -744,8 +783,8 @@ pruneAiCallTracker();
     `You are a careful educational assistant for people studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
     `Output exactly these two sections in order and nothing else:\n` +
     `Commentary: Give a comprehensive but concise educational explanation. If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence. If Educational Caution is not "None", include it in beginner-friendly wording. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and a natural practical takeaway using wording such as "A practical benefit is", "This can help the reader", "One takeaway is", or "In daily practice". Do not use the phrase "for laymen". Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
-    `Chain of Narrators: extract narrator names from the Arabic text and transliterate into English, separated by ->. Do not evaluate, grade, praise, weaken, authenticate, or criticize the chain or narrators.\n` +
-    `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not create an Authenticity Status section. The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed. If unsure, keep the chain list simple and say "No chain."`;
+    `Chain of Narrators: extract only narrator names from the Arabic isnad and transliterate into English, separated by ->. Do not include commentary sentences, explanations, labels, grades, or notes. If a clean narrator-name chain is not available, write exactly "Chain not available".\n` +
+    `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not create an Authenticity Status section. The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed. If unsure, keep the chain list simple and say "Chain not available."`;
 
   try {
     let raw = await callOpenRouter([
@@ -856,5 +895,6 @@ if (require.main === module) {
 module.exports = {
   app,
   extractAuthenticityStatus,
-  normalizeArabicForDetection
+  normalizeArabicForDetection,
+  sanitizeNarratorChain
 };
