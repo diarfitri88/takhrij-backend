@@ -520,6 +520,40 @@ function parseAiCommentary(raw = '') {
   };
 }
 
+function needsWeakReportCaution(authenticityStatus = '') {
+  return /\b(weak|not authentic|gharib|caution)\b/i.test(String(authenticityStatus));
+}
+
+function buildWeakReportCaution(authenticityStatus = '') {
+  if (/not authentic/i.test(authenticityStatus)) {
+    return 'This narration contains an explicit authenticity caution in the source text, so it should not be used by itself to establish a specific virtue, fixed reward, or religious practice.';
+  }
+
+  if (/gharib/i.test(authenticityStatus)) {
+    return 'This narration contains an explicit gharib/caution note in the source text, so any specific virtue, fixed reward, or religious practice mentioned in it should be treated carefully unless verified through stronger evidence.';
+  }
+
+  return 'This narration contains a weak authenticity note in the source text, so it should not be used by itself to establish a specific virtue, fixed reward, or religious practice.';
+}
+
+function applyWeakReportCommentaryGuard(commentary = '', authenticityStatus = '') {
+  if (!needsWeakReportCaution(authenticityStatus)) {
+    return commentary;
+  }
+
+  const caution = buildWeakReportCaution(authenticityStatus);
+  const cleaned = String(commentary || '')
+    .replace(/\b(?:this\s+)?(?:hadith|narration|report)\s+serves\s+as\s+(?:a\s+)?motivation[^.]*\.\s*/gi, '')
+    .replace(/\b(?:this\s+)?(?:hadith|narration|report)\s+(?:encourages|motivates)\s+[^.]*\.\s*/gi, '')
+    .trim();
+
+  if (cleaned.toLowerCase().startsWith(caution.toLowerCase())) {
+    return cleaned;
+  }
+
+  return `${caution}\n\n${cleaned || 'The topic may still be discussed in a general educational way, but specific claims from this narration need stronger evidence before being used for practice.'}`;
+}
+
 // ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
 let fuse;
 function initFuse() {
@@ -726,19 +760,23 @@ pruneAiCallTracker();
   const snippet = truncate(englishFull, 500);
   const sourceHadith = findHadithByReference(reference, collection);
   const authenticity = extractAuthenticityStatus(sourceHadith, collection || inferCollectionFromReference(reference));
+  const weakReportCaution = needsWeakReportCaution(authenticity.status)
+    ? buildWeakReportCaution(authenticity.status)
+    : '';
   const userPrompt =
     `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
     `Source Authenticity Status: ${authenticity.status}\n` +
     `Authenticity Source: ${authenticity.source}\n` +
     `Educational Caution: ${authenticity.caution || 'None'}\n` +
+    `Weak Report Commentary Rule: ${weakReportCaution || 'None'}\n` +
     `Hadith (Arabic): ${arabicFull}\n` +
     `Hadith (English): ${snippet}`;
 
   const educationalSystemPrompt =
     `You are a careful educational assistant for laymen studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
     `Output exactly these two sections in order and nothing else:\n` +
-    `Commentary: Give a comprehensive but concise educational explanation. If Educational Caution is not "None", begin with that caution in one short sentence. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and practical benefit for laymen. Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
+    `Commentary: Give a comprehensive but concise educational explanation. If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence. If Educational Caution is not "None", include it in beginner-friendly wording. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and practical benefit for laymen. Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
     `Chain of Narrators: extract narrator names from the Arabic text and transliterate into English, separated by ->. Do not evaluate, grade, praise, weaken, authenticate, or criticize the chain or narrators.\n` +
     `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not create an Authenticity Status section. The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed. If unsure, keep the chain list simple and say "No chain."`;
 
@@ -749,9 +787,13 @@ pruneAiCallTracker();
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
     const parsedCommentary = parseAiCommentary(raw);
+    const guardedCommentary = applyWeakReportCommentaryGuard(
+      parsedCommentary.commentary,
+      authenticity.status
+    );
 
     const payload = {
-      commentary: parsedCommentary.commentary,
+      commentary: guardedCommentary,
       chain: parsedCommentary.chain,
       evaluation: '',
       authenticityStatus: authenticity.status,
