@@ -4,7 +4,10 @@
   "description": "Hadith verification backend using GPT-4",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "verify:tirmidhi-2970": "node scripts/verify-tirmidhi-2970-authenticity.js",
+    "verify:chain": "node scripts/verify-chain-sanitizer.js",
+    "verify:fallback": "node scripts/verify-did-you-mean-fallback.js"
   },
   "dependencies": {
     "axios": "^0.27.2",

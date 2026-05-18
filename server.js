@@ -10,13 +10,22 @@ const app = express();
 const mutawatirData = JSON.parse(fs.readFileSync(path.join(__dirname, 'mutawatir.json'), 'utf8'));
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "64kb" }));
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+const OPENROUTER_TIMEOUT_MS = Number(process.env.OPENROUTER_TIMEOUT_MS) || 30000;
+const MAX_QUERY_LENGTH = 300;
+const MAX_TEXT_FIELD_LENGTH = 4000;
 
 // ─── 0) CACHE FOR COMMENTARY ───────────────────────────────────────────────────
-const commentaryCache = {};
+const commentaryCache = new Map();
+const MAX_COMMENTARY_CACHE_ENTRIES = 250;
+const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const COMMENTARY_CACHE_VERSION = 'weak-caution-language-v5';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
-const aiCallTracker = {}; // { 'IP': { count: x, lastReset: timestamp } }
+const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
 
 const MAX_CALLS = 15;
 const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
@@ -24,25 +33,96 @@ const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 function checkAiLimit(ip) {
   const now = Date.now();
 
-  if (!aiCallTracker[ip]) {
-    aiCallTracker[ip] = { count: 0, lastReset: now };
+  if (!aiCallTracker.has(ip)) {
+    aiCallTracker.set(ip, { count: 0, lastReset: now });
   }
+
+  const entry = aiCallTracker.get(ip);
 
   // Reset if 24 hours passed since lastReset
-  if (now - aiCallTracker[ip].lastReset >= TIME_LIMIT) {
-    aiCallTracker[ip].count = 0;
-    aiCallTracker[ip].lastReset = now;
+  if (now - entry.lastReset >= TIME_LIMIT) {
+    entry.count = 0;
+    entry.lastReset = now;
   }
 
-  if (aiCallTracker[ip].count >= MAX_CALLS) {
+  if (entry.count >= MAX_CALLS) {
     return false; // Limit reached
   }
 
-  aiCallTracker[ip].count++;
+  entry.count++;
   return true; // Allowed
+}
+
+function pruneAiCallTracker() {
+  const cutoff = Date.now() - TIME_LIMIT;
+  for (const [ip, entry] of aiCallTracker.entries()) {
+    if (entry.lastReset < cutoff) aiCallTracker.delete(ip);
+  }
+}
+
+function getCachedCommentary(cacheKey) {
+  const cached = commentaryCache.get(cacheKey);
+  if (!cached) return null;
+
+  if (Date.now() - cached.createdAt > COMMENTARY_CACHE_TTL_MS) {
+    commentaryCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.payload;
+}
+
+function setCachedCommentary(cacheKey, payload) {
+  // Bound the in-memory cache so repeated commentary requests cannot grow the process forever.
+  commentaryCache.set(cacheKey, { payload, createdAt: Date.now() });
+  if (commentaryCache.size > MAX_COMMENTARY_CACHE_ENTRIES) {
+    const oldestKey = commentaryCache.keys().next().value;
+    commentaryCache.delete(oldestKey);
+  }
+}
+
+function getClientIp(req) {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || req.ip
+    || req.socket.remoteAddress
+    || 'unknown';
+}
+
+function cleanInput(value, maxLength = MAX_TEXT_FIELD_LENGTH) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\u0000/g, '').trim().slice(0, maxLength);
+}
+
+async function callOpenRouter(messages, { max_tokens, temperature }) {
+  if (!process.env.OPENROUTER_API_KEY) {
+    const err = new Error("OPENROUTER_API_KEY is not configured");
+    err.statusCode = 503;
+    throw err;
+  }
+
+  // Keep OpenRouter access centralized so timeouts, model choice, and response guards stay consistent.
+  const response = await axios.post(
+    OPENROUTER_URL,
+    {
+      model: OPENROUTER_MODEL,
+      messages,
+      max_tokens,
+      temperature
+    },
+    {
+      timeout: OPENROUTER_TIMEOUT_MS,
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  return cleanInput(response.data?.choices?.[0]?.message?.content || "", 12000);
 }
 // ─── 1) HELPER: Truncate long text to 500 chars ───────────────────────────────
 function truncate(text, max = 500) {
+  text = typeof text === 'string' ? text : '';
   const singleLine = text.replace(/[\r\n]+/g, ' ');
   return singleLine.length > max
     ? singleLine.slice(0, max).trim() + '…'
@@ -57,13 +137,13 @@ const STOP_WORDS = new Set([
 function extractKeywords(query) {
   return query
     .toLowerCase()
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    .match(/[\p{L}\p{N}]+/gu)
+    ?.filter(w => w.length > 2 && !STOP_WORDS.has(w)) || [];
 }
 
 // ─── 3) HELPER: normalize text for searching ────────────────────────────────────
 function normalize(text) {
-  return text
+  return String(text || '')
     .toLowerCase()
     .replace(/[\u064B-\u065F]/g, '')       // remove Arabic diacritics
     .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '') // strip punctuation
@@ -81,6 +161,9 @@ function checkMutawatir(reference) {
 // ─── 4) LOAD HADITH COLLECTIONS ────────────────────────────────────────────────
 let bukhariHadiths = [], muslimHadiths = [], tirmidhiHadiths = [], nasaiHadiths = [];
 let malikHadiths = [], ibnMajahHadiths = [], darimiHadiths = [], ahmedHadiths = [], abuDawudHadiths = [];
+// Keep combined search data cached after startup; rebuilding it per request is costly for large JSON collections.
+let allHadithsCache = [];
+let fuseDataCache = [];
 
 const urls = {
   bukhari:   "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/bukhari.json?alt=media&token=f0c30d22-2041-41c1-ae4e-84d82749ec5d",
@@ -96,8 +179,8 @@ const urls = {
 
 async function loadHadiths() {
   try {
-    const results = await Promise.all(Object.values(urls).map(u => axios.get(u)));
     const collections = Object.keys(urls);
+    const results = await Promise.all(collections.map(collection => axios.get(urls[collection], { timeout: 20000 })));
     results.forEach((res, i) => {
       const arr = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.hadiths) ? res.data.hadiths : []);
       const mapped = arr.map(h => ({ ...h, collection: collections[i] }));
@@ -114,13 +197,16 @@ async function loadHadiths() {
       }
     });
     console.log("✅ All hadith collections loaded.");
+    allHadithsCache = getAllHadiths();
     // After loading hadiths, initialize Fuse.js with all hadiths combined:
     initFuse();
   } catch (err) {
     console.error("❌ Failed to load hadiths:", err.message);
   }
 }
-loadHadiths();
+if (require.main === module) {
+  loadHadiths();
+}
 
 const names = {
   bukhari:   "Sahih Bukhari",
@@ -138,38 +224,405 @@ const refFormatters = {
   default: h => `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number}`
 };
 
-// ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
-let fuse;
-function initFuse() {
-  const allHadiths = [
+function getAllHadiths() {
+  return [
     ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
     ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
     ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
   ];
+}
 
+function getEnglishText(h) {
+  if (typeof h.english === "string") return h.english;
+  if (h.english && typeof h.english === "object") return h.english.text || h.english.body || "";
+  if (typeof h.text === "string") return h.text;
+  if (typeof h.body === "string") return h.body;
+  return "";
+}
+
+function getHadithReference(h) {
+  return h.reference
+    ? h.reference
+    : (refFormatters[h.collection] || refFormatters.default)(h);
+}
+
+function normalizeCollectionKey(value = '') {
+  const input = String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const aliases = {
+    bukhari: 'bukhari',
+    sahihbukhari: 'bukhari',
+    sahihalbukhari: 'bukhari',
+    muslim: 'muslim',
+    sahihmuslim: 'muslim',
+    sahihalmuslim: 'muslim',
+    tirmidhi: 'tirmidhi',
+    jamitirmidhi: 'tirmidhi',
+    nasai: 'nasai',
+    sunannasai: 'nasai',
+    malik: 'malik',
+    muwattamalik: 'malik',
+    ibnmajah: 'ibnmajah',
+    sunanibnmajah: 'ibnmajah',
+    darimi: 'darimi',
+    sunandarimi: 'darimi',
+    ahmed: 'ahmed',
+    ahmad: 'ahmed',
+    musnadahmad: 'ahmed',
+    abudawud: 'abudawud',
+    abidawud: 'abudawud',
+    sunanabidawud: 'abudawud'
+  };
+
+  return aliases[input] || value;
+}
+
+function inferCollectionFromReference(reference = '') {
+  const normalized = String(reference).toLowerCase();
+  if (normalized.includes('bukhari')) return 'bukhari';
+  if (normalized.includes('muslim')) return 'muslim';
+  return '';
+}
+
+function normalizeArabicForDetection(value = '') {
+  return String(value)
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[\u0625\u0623\u0622]/g, '\u0627')
+    .replace(/\u0649/g, '\u064a')
+    .replace(/\u0629/g, '\u0647')
+    .replace(/\u0640/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findHadithByReference(reference, collection) {
+  const collectionKey = normalizeCollectionKey(collection || inferCollectionFromReference(reference));
+  const referenceText = String(reference || '').toLowerCase();
+  const referenceNumber = (referenceText.match(/\d+/g) || []).pop();
+
+  return allHadithsCache.find(h => {
+    if (collectionKey && h.collection !== collectionKey) return false;
+
+    const knownReference = getHadithReference(h).toLowerCase();
+    if (knownReference === referenceText) return true;
+
+    const hadithNumbers = [h.hadithnumber, h.idInBook, h.id, h.number]
+      .filter(Boolean)
+      .map(value => String(value));
+
+    return referenceNumber && hadithNumbers.includes(referenceNumber);
+  }) || null;
+}
+
+function extractAuthenticityStatus(h, collection, sourceOverride = '') {
+  const collectionKey = normalizeCollectionKey(collection || h?.collection);
+
+  if (['bukhari', 'muslim'].includes(collectionKey)) {
+    return {
+      status: 'Sahih by collection',
+      source: `${names[collectionKey]} collection metadata`,
+      caution: ''
+    };
+  }
+
+  const explicitFields = [
+    h?.grade,
+    h?.grading,
+    h?.classification,
+    h?.authenticity,
+    h?.status,
+    h?.english?.grade,
+    h?.english?.grading,
+    h?.english?.classification
+  ].filter(Boolean).join(' ');
+
+  const sourceText = `${explicitFields} ${getEnglishText(h || {})} ${h?.arabic || ''} ${sourceOverride}`;
+  const normalizedArabicSource = normalizeArabicForDetection(sourceText);
+  const source = explicitFields ? 'structured source field' : 'explicit source text';
+  const arabicHas = pattern => new RegExp(pattern).test(normalizedArabicSource);
+  const hasExplicitWeakPhrase =
+    /\b(?:da['‘’]?if|daeef|weak)\b/i.test(explicitFields) ||
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?(?:da['‘’]?if|daeef|weak)\b/i.test(sourceText) ||
+    /\b(?:da['‘’]?if|daeef|weak)\s*\)/i.test(sourceText) ||
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u0636\\u0639\\u064a\\u0641') ||
+    arabicHas('\\u0627\\u0633\\u0646\\u0627\\u062f\\u0647\\s+\\u0636\\u0639\\u064a\\u0641') ||
+    arabicHas('\\u0636\\u0639\\u0641\\u0647');
+  const hasExplicitNotAuthenticPhrase =
+    arabicHas('\\u0644\\u0627\\s+\\u064a\\u0635\\u062d');
+  const hasExplicitHasanSahihPhrase =
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\s+sahih\b/i.test(sourceText) ||
+    /\bhasan\s+sahih\b/i.test(explicitFields) ||
+    arabicHas('\\u062d\\u0633\\u0646\\s+\\u0635\\u062d\\u064a\\u062d');
+  const hasExplicitSahihPhrase =
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?sahih\b/i.test(sourceText) ||
+    /\bsahih\s*\)/i.test(sourceText) ||
+    /\bsahih\b/i.test(explicitFields) ||
+    arabicHas('\\u0635\\u062d\\u062d\\u0647') ||
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u0635\\u062d\\u064a\\u062d');
+  const hasExplicitHasanPhrase =
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?hasan\b/i.test(sourceText) ||
+    /\bhasan\s*\)/i.test(sourceText) ||
+    /\bhasan\b/i.test(explicitFields) ||
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u062d\\u0633\\u0646');
+  const hasExplicitGharibPhrase =
+    /\bgharib\b/i.test(explicitFields) ||
+    /\b(?:graded|classed|classified|declared|marked|ruled)\s+(?:as\s+)?gharib\b/i.test(sourceText) ||
+    arabicHas('\\u062d\\u062f\\u064a\\u062b\\s+\\u063a\\u0631\\u064a\\u0628') ||
+    arabicHas('\\u0644\\u0627\\s+\\u0646\\u0639\\u0631\\u0641\\u0647\\s+\\u0627\\u0644\\u0627\\s+\\u0645\\u0646\\s+\\u0647\\u0630\\u0627\\s+\\u0627\\u0644\\u0648\\u062c\\u0647');
+  const hasExplicitCautionPhrase =
+    arabicHas('\\u0645\\u0646\\u0643\\u0631') ||
+    arabicHas('\\u0634\\u064a\\u062e\\s+\\u0645\\u062c\\u0647\\u0648\\u0644');
+
+  // This only surfaces explicit grading phrases already present in local/source data; GPT is not asked to grade.
+  if (hasExplicitWeakPhrase) {
+    return {
+      status: "Weak (explicitly mentioned in source text)",
+      source,
+      caution: 'This source text includes an explicit weakness note. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+    };
+  }
+
+  if (hasExplicitNotAuthenticPhrase) {
+    return {
+      status: 'Not authentic (explicitly mentioned in source text)',
+      source,
+      caution: 'This source text includes an explicit authenticity caution. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+    };
+  }
+
+  if (hasExplicitHasanSahihPhrase) {
+    return { status: 'Hasan Sahih (mentioned in source text)', source, caution: '' };
+  }
+
+  if (hasExplicitSahihPhrase) {
+    return { status: 'Sahih (mentioned in source text)', source, caution: '' };
+  }
+
+  if (hasExplicitHasanPhrase) {
+    return { status: 'Hasan (mentioned in source text)', source, caution: '' };
+  }
+
+  if (hasExplicitGharibPhrase) {
+    return { status: 'Gharib (explicitly mentioned in source text)', source, caution: '' };
+  }
+
+  if (hasExplicitCautionPhrase) {
+    return {
+      status: 'Caution noted in source text',
+      source,
+      caution: 'This source text includes an explicit caution phrase. Treat the commentary as educational background only and verify religious use with qualified scholars.'
+    };
+  }
+
+  return {
+    status: 'Not specified in source',
+    source: 'available source metadata/text',
+    caution: ''
+  };
+}
+
+function sanitizeNarratorBio(rawBio = '') {
+  const forbiddenPattern = /\b(scholarly remarks|jarh|ta['‘’]?dil|grading|grade|graded|authenticity|trustworthy|reliable|unreliable|weak|thiqah|liar|fabricator|majhul|abandoned|criticism|dispute|disputed)\b/i;
+  const allowedLabels = [
+    'era/generation',
+    'place/region',
+    'region',
+    'teachers',
+    'students',
+    'collections',
+    'known for',
+    'role in hadith transmission',
+    'educational note',
+    'educational importance'
+  ];
+  const sectionValues = new Map();
+  let currentLabel = null;
+
+  String(rawBio)
+    .replace(/```[\s\S]*?```/g, '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .forEach(line => {
+      const labelMatch = line.match(/^\*\*([^:*]+):\*\*/);
+      if (labelMatch) {
+        const label = labelMatch[1].trim().toLowerCase();
+        currentLabel = allowedLabels.includes(label) ? label : null;
+
+        if (currentLabel) {
+          const value = line.replace(/^\*\*[^:*]+:\*\*\s*/, '').trim();
+          if (value && !forbiddenPattern.test(value)) {
+            sectionValues.set(currentLabel, value);
+          }
+        }
+        return;
+      }
+
+      if (currentLabel && !forbiddenPattern.test(line)) {
+        const existing = sectionValues.get(currentLabel);
+        sectionValues.set(currentLabel, existing ? `${existing} ${line}` : line);
+      }
+    });
+
+  const isPlaceholder = value => /^(not listed|not specified|unknown|unclear|n\/a|none)\b/i.test(String(value).trim());
+  const preferredKnownFor = sectionValues.get('known for') || sectionValues.get('educational importance');
+  const safeSections = [
+    ['Era/Generation', sectionValues.get('era/generation')],
+    ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
+    ['Known For', preferredKnownFor],
+    ['Role in Hadith Transmission', sectionValues.get('role in hadith transmission')],
+    ['Teachers', sectionValues.get('teachers')],
+    ['Students', sectionValues.get('students')],
+    ['Collections', sectionValues.get('collections')],
+    ['Educational Note', sectionValues.get('educational note')]
+  ].filter(([, value]) => value && !isPlaceholder(value));
+
+  if (!safeSections.length) {
+    return '**Educational Note:** Beginner-level historical information for this narrator is not available in this brief summary.';
+  }
+
+  return safeSections
+    .map(([label, value]) => `**${label}:** ${value}`)
+    .join('\n');
+}
+
+function stripSectionHeading(text = '', headingPattern) {
+  return String(text)
+    .replace(new RegExp(`^\\s*(?:#{1,6}\\s*)?(?:\\*\\*)?${headingPattern}(?:\\*\\*)?\\s*[:：-]?\\s*`, 'i'), '')
+    .trim();
+}
+
+function sanitizeNarratorChain(chain = '') {
+  const cleaned = String(chain || '')
+    .replace(/\*\*/g, '')
+    .replace(/\r\n/g, '\n')
+    .split(/\n\s*\n/)[0]
+    .split(/(?:Commentary|Explanation|Educational Commentary|Meaning|Evaluation of Hadith|Fiqh Ruling)\s*[:ï¼š-]?/i)[0]
+    .trim();
+
+  if (!cleaned || /^no chain\.?$/i.test(cleaned) || /^chain not available\.?$/i.test(cleaned)) {
+    return 'Chain not available';
+  }
+
+  const hasChainDelimiter = /(?:->|â†’|=>|,|;|،)/.test(cleaned);
+  if (!hasChainDelimiter) {
+    return 'Chain not available';
+  }
+
+  const sentencePattern = /[.!?]|\b(?:hadith|narration|report|meaning|lesson|benefit|reader|practice|authenticity|source|reward|virtue|specific|claim)\b/i;
+  const names = cleaned
+    .split(/\s*(?:->|â†’|=>|,|;|،)\s*/)
+    .map(name => name.replace(/^\d+\.\s*/, '').trim())
+    .filter(Boolean);
+
+  if (
+    names.length < 2 ||
+    names.length > 20 ||
+    names.some(name => name.length > 55 || sentencePattern.test(name) || /\s{2,}/.test(name))
+  ) {
+    return 'Chain not available';
+  }
+
+  return names.join(' -> ');
+}
+
+function parseAiCommentary(raw = '') {
+  const cleaned = String(raw || '').replace(/```[\s\S]*?```/g, '').trim();
+  const commentaryHeading = '(?:Commentary|Explanation|Educational Commentary|Meaning)';
+  const chainHeading = '(?:Chain of Narrators|Narrator Chain|Isnad|Chain)';
+  const commentaryRegex = new RegExp(
+    `${commentaryHeading}\\s*[:：-]?\\s*([\\s\\S]*?)(?=${chainHeading}\\s*[:：-]?|$)`,
+    'i'
+  );
+  const chainRegex = new RegExp(`${chainHeading}\\s*[:：-]?\\s*([\\s\\S]*)`, 'i');
+
+  const commentaryMatch = cleaned.match(commentaryRegex);
+  const chainMatch = cleaned.match(chainRegex);
+  const chain = sanitizeNarratorChain(chainMatch?.[1] || '');
+
+  let commentary = commentaryMatch?.[1]?.trim() || '';
+  if (!commentary) {
+    // Preserve frontend compatibility even when the model omits headings.
+    commentary = cleaned
+      .replace(chainRegex, '')
+      .replace(/(?:Evaluation of Hadith|Fiqh Ruling)\s*[:：-]?\s*[\s\S]*/i, '')
+      .trim();
+  }
+
+  commentary = stripSectionHeading(commentary, commentaryHeading);
+
+  return {
+    commentary: commentary || 'Commentary was not available for this hadith. Please refer to qualified scholars for detailed explanation.',
+    chain
+  };
+}
+
+function needsWeakReportCaution(authenticityStatus = '') {
+  return /\b(weak|not authentic|gharib|caution)\b/i.test(String(authenticityStatus));
+}
+
+function buildWeakReportCaution(authenticityStatus = '') {
+  if (/not authentic/i.test(authenticityStatus)) {
+    return 'This narration contains an explicit authenticity caution in the source text, so it should not be used by itself to establish a specific virtue, fixed reward, or religious practice.';
+  }
+
+  if (/gharib/i.test(authenticityStatus)) {
+    return 'This narration contains an explicit gharib/caution note in the source text, so any specific virtue, fixed reward, or religious practice mentioned in it should be treated carefully unless verified through stronger evidence.';
+  }
+
+  return 'This narration contains a weak authenticity note in the source text, so it should not be used by itself to establish a specific virtue, fixed reward, or religious practice.';
+}
+
+function applyWeakReportCommentaryGuard(commentary = '', authenticityStatus = '') {
+  if (!needsWeakReportCaution(authenticityStatus)) {
+    return commentary;
+  }
+
+  const caution = buildWeakReportCaution(authenticityStatus);
+  const cleaned = String(commentary || '')
+    .replace(/\b(?:this\s+)?(?:hadith|narration|report)\s+serves\s+as\s+(?:a\s+)?motivation[^.]*\.\s*/gi, '')
+    .replace(/\b(?:this\s+)?(?:hadith|narration|report)\s+(?:encourages|motivates)\s+[^.]*\.\s*/gi, '')
+    .trim();
+
+  if (cleaned.toLowerCase().startsWith(caution.toLowerCase())) {
+    return cleaned;
+  }
+
+  return `${caution}\n\n${cleaned || 'The topic may still be discussed in a general educational way, but specific claims from this narration need stronger evidence before being used for practice.'}`;
+}
+
+function polishCommentaryLanguage(commentary = '') {
+  return String(commentary || '')
+    .replace(/\bfor laymen\b/gi, 'for readers')
+    .replace(/\bpractical benefit for readers\b/gi, 'practical benefit')
+    .replace(/\bpractical benefit for the reader\b/gi, 'practical benefit')
+    .trim();
+}
+
+// ─── Fuse.js Setup ─────────────────────────────────────────────────────────────
+let fuse;
+function initFuse() {
   // Prepare data for Fuse search - we keep the full hadith object as 'hadith'
-  const fuseData = allHadiths.map(h => {
-    let en = "";
-    if (typeof h.english === "string") en = h.english;
-    else if (h.english && typeof h.english === "object")
-      en = h.english.text || h.english.body || "";
-    else if (typeof h.text === "string") en = h.text;
-    else if (typeof h.body === "string") en = h.body;
+  fuseDataCache = allHadithsCache.map(h => {
+    const en = getEnglishText(h);
+    const ar = h.arabic || "";
 
-   const ar = h.arabic || "";
-
-return {
-  text: `${normalize(en)} ${normalize(ar)} ${(names[h.collection] || "").toLowerCase()} ${h.reference || ""} ${h.hadithnumber || h.id || h.number || ""}`,
-  hadith: h
-};
+    return {
+      text: `${normalize(en)} ${normalize(ar)}`,
+      referenceText: `${(names[h.collection] || "").toLowerCase()} ${h.reference || ""} ${h.hadithnumber || h.id || h.number || ""}`,
+      hadith: h
+    };
   });
 
-  fuse = new Fuse(fuseData, {
+  fuse = new Fuse(fuseDataCache, {
     includeScore: true,
     threshold: 0.35,
     minMatchCharLength: 4,
     ignoreLocation: true,
-    keys: ['text']
+    keys: [
+      { name: 'text', weight: 0.85 },
+      { name: 'referenceText', weight: 0.15 }
+    ]
   });
 }
 
@@ -181,28 +634,21 @@ function searchHadiths(query) {
   if (!q || keywords.length === 0) return [];
   if (!fuse) return null;
 
-  const allHadiths = [
-    ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
-    ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
-    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
-  ];
-
-  const exactMatches = allHadiths.filter(h => {
-    const ar = normalize(h.arabic || "");
-    let en = "";
-
-    if (typeof h.english === "string") en = h.english;
-    else if (h.english && typeof h.english === "object") en = h.english.text || h.english.body || "";
-    else if (typeof h.text === "string") en = h.text;
-    else if (typeof h.body === "string") en = h.body;
-
-    en = normalize(en);
-
-    return ar.includes(q) || en.includes(q);
-  });
-
+  // Search quality order: exact phrase first, then all-keyword matches, then Fuse fuzzy fallback.
+  const exactMatches = fuseDataCache.filter(({ text }) => text.includes(q)).map(({ hadith }) => hadith);
   if (exactMatches.length) {
     return exactMatches.slice(0, 10);
+  }
+
+  const keywordMatches = allHadithsCache.filter(h => {
+    const ar = normalize(h.arabic || "");
+    const en = normalize(getEnglishText(h));
+
+    return keywords.every(keyword => ar.includes(keyword) || en.includes(keyword));
+  });
+
+  if (keywordMatches.length) {
+    return keywordMatches.slice(0, 10);
   }
 
   const results = fuse.search(q)
@@ -211,9 +657,88 @@ function searchHadiths(query) {
   return results.slice(0, 10).map(r => r.item.hadith);
 }
 
+function extractSuggestionPhrase(h, queryKeywords = []) {
+  const english = normalize(getEnglishText(h));
+  const arabic = normalizeArabicForDetection(h?.arabic || '');
+  const source = `${english} ${arabic}`.trim();
+  const words = source.match(/[\p{L}\p{N}]+/gu) || [];
+
+  if (!words.length) return '';
+
+  const querySet = new Set(queryKeywords.map(normalize));
+  const matchingIndex = words.findIndex(word => querySet.has(normalize(word)));
+  const startIndex = matchingIndex === -1 ? 0 : matchingIndex;
+  const phraseWords = words
+    .slice(startIndex, startIndex + 5)
+    .filter(word => word.length > 2 && !STOP_WORDS.has(word.toLowerCase()));
+
+  return phraseWords.slice(0, 5).join(' ').trim();
+}
+
+function buildDidYouMeanSuggestions(query) {
+  if (!fuse) return [];
+
+  const q = normalize(query);
+  const keywords = extractKeywords(query);
+  const suggestions = new Set();
+
+  fuse.search(q)
+    .filter(r => r.score <= 0.6)
+    .slice(0, 20)
+    .forEach(r => {
+      const phrase = extractSuggestionPhrase(r.item.hadith, keywords);
+      if (phrase) suggestions.add(phrase);
+    });
+
+  if (suggestions.size < 5 && keywords.length) {
+    allHadithsCache
+      .map(h => {
+        const text = `${normalize(getEnglishText(h))} ${normalize(h.arabic || '')}`;
+        const overlap = keywords.filter(keyword => text.includes(keyword)).length;
+        return { h, overlap };
+      })
+      .filter(item => item.overlap > 0)
+      .sort((a, b) => b.overlap - a.overlap)
+      .slice(0, 20)
+      .forEach(({ h }) => {
+        const phrase = extractSuggestionPhrase(h, keywords);
+        if (phrase) suggestions.add(phrase);
+      });
+  }
+
+  return [...suggestions]
+    .filter(suggestion =>
+      suggestion.length >= 4 &&
+      suggestion.toLowerCase() !== q &&
+      !/\b(?:sahih|hasan|weak|authentic|fabricated|albani|hajar|graded|grading)\b/i.test(suggestion)
+    )
+    .slice(0, 5);
+}
+
+function formatDidYouMeanFallback(query, suggestions = []) {
+  const cleanQuery = String(query || '').trim();
+  const cleanSuggestions = suggestions
+    .map(suggestion => String(suggestion || '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const suggestionText = cleanSuggestions.length
+    ? `\n\nDid you mean:\n${cleanSuggestions.map(suggestion => `• ${suggestion}`).join('\n')}`
+    : '';
+
+  return `---\nEnglish Matn:\nNo verified match found for "${cleanQuery}".${suggestionText}\n\n` +
+    `Try exact Arabic or English wording for better results.\n\n` +
+    `This result is not a hadith verification or grading.\n\n` +
+    `Reference: Search Suggestions\n` +
+    `Note: No local hadith result was matched.`;
+}
+
 // ─── 6) SEARCH ENDPOINT ───────────────────────────────────────────────────────
 app.post("/search-hadith", async (req, res) => {
-  const q = (req.body.query || "").trim();
+  const q = cleanInput(req.body.query, MAX_QUERY_LENGTH);
+  if (!q) {
+    return res.json({ result: 'âŒ No query provided.' });
+  }
+
   const matches = searchHadiths(q);
 
 if (matches === null) {
@@ -224,17 +749,11 @@ if (matches === null) {
 
   if (matches.length) {
     const result = matches.map(h => {
-      let en = "";
-      if (typeof h.english === "string") en = h.english;
-      else if (h.english && typeof h.english === "object")
-        en = h.english.text || h.english.body || "";
-      else if (typeof h.text === "string") en = h.text;
-      else if (typeof h.body === "string") en = h.body;
+      const en = getEnglishText(h);
 
       const ar  = h.arabic || "[No Arabic]";
-      const ref = h.reference
-  ? h.reference
-  : (refFormatters[h.collection] || refFormatters.default)(h);
+      const ref = getHadithReference(h);
+      const authenticity = extractAuthenticityStatus(h, h.collection);
        // Mutawatir Check
   const mutawatirInfo = checkMutawatir(ref);
   const classification = mutawatirInfo
@@ -242,196 +761,120 @@ if (matches === null) {
   : `Classification: Ahad`;
 
 
-      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\n${classification}`;
+      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\nAuthenticity Status: ${authenticity.status}\n${classification}`;
     }).join("\n");
     return res.json({ result });
  } else {
-// ─── GPT FALLBACK ─────────────────────────────────────────────────────────
-  try {
-   const q = (req.body.query || '').trim();
-if (!q) {
-  return res.json({ result: '❌ No query provided.' });
-}   
-    const prompt = `
-You are a hadith researcher trained on the Salafi methodology, including the works of Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, and Ibn Hajar.
-
-The user submitted a phrase from a hadith, in Arabic or English, which may be misquoted, vague, or incorrectly attributed.
-
-You must respond in **exactly 4 paragraphs**, each under **80 words** and separated by **two real line breaks** (\\n\\n). Do **not combine points** in one paragraph.
-
-If the phrase is verifiable in the 9 primary hadith collections (Bukhari, Muslim, Abu Dawood, Tirmidhi, Ibn Majah, Nasa’i, Ahmad, Muwatta, Darimi), give the **exact matn**, **grading**, and **reference**. Cite scholars like Al-Albani or Ibn Hajar. Do **not use general language like “reported in various sources”**. Only cite what is verified.
-
-If the phrase is vague, unclear, or a standalone Arabic word (e.g., لأواء, عيلة), define it based on hadith or rijāl usage only. Do **not translate based on modern Arabic or personal guesswork**.
-
-Then suggest one sahih hadith with a **similar theme**. Only include it if it is **found in the 9 books** and graded **sahih** by Salafi scholars. Do **not cite weak or disputed hadiths**. Avoid “city of knowledge” and other unreliable narrations.
-
-Finally, suggest 3–5 **matn-style keywords** from known sahih hadiths (e.g., “smiling is charity”, “fear Allah”, “whoever lies about me”). Do not use poetic or vague expressions.
-
-Strict rules:
-- Use “Prophet Muhammad ﷺ” with salutation.
-- No Qur’an quotes.
-- No combining points.
-- No guessing, no metaphorical claims, no vague mentions.
-- Do not say “may be interpreted as”, “it might be”, or “reported elsewhere”.
-- No apologies or suggestions like “try rephrasing”.
-
-Stick to classical hadith sources only. Respond like a precise Salafi muhaqqiq.
-`.trim();
-
-    const ai = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: 'openai/gpt-4o-mini',
-        messages: [
-      { role: "system", content: prompt },
-      { role: "user", content: q }
-    ],
-    max_tokens: 1200,
-    temperature: 0.0
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-let raw = ai.data.choices[0]?.message?.content || '';
-    
-raw = raw.replace(/\r\n/g, '\n');
-raw = raw.replace(/\n{3,}/g, '\n\n');
-raw = raw.replace(/(?<=[a-z0-9])\. (?=[A-Z])/g, '.\n\n'); // keep
-raw = raw.replace(/\n{2,}/g, '\n\n');                    // normalize spacing
-raw = raw.replace(/([^\n])\n([^\n])/g, '$1 $2');          // fix mid-sentence breaks
-raw = raw.trim();
-    
-    const result =
-    `---\nEnglish Matn:\n${raw}\n\n` +
-    `Reference: AI Generated\n` +
-    `Note: No close match was found in the local JSON search. The AI response is only a fallback and should be verified against source texts.\n` +
-    `Search tip: Enter specific keywords (minimum 3 letters each) separated by spaces; common words like "and", "the", "of" are ignored, and fuzzy matching helps catch close spellings.`;
-
-
-   return res.json({ result });
-    } catch (err) {
-      console.error("❌ GPT fallback error:", err.message);
-      return res.json({ result: `❌ AI fallback failed. Please try again later.` });
-    }
+  // Local-only fallback: suggest better search phrases without calling GPT or grading anything.
+  const fallbackQuery = (req.body.query || '').trim();
+  if (!fallbackQuery) {
+    return res.json({ result: 'No query provided.' });
   }
+
+  const safeFallbackResult = formatDidYouMeanFallback(
+    fallbackQuery,
+    buildDidYouMeanSuggestions(fallbackQuery)
+  );
+
+  return res.json({ result: safeFallbackResult });
+ }
 });
 // ─── 8) COMMENTARY ENDPOINT ───────────────────────────────────────────────────
 app.post('/gpt-commentary', async (req, res) => {
-  const englishFull = (req.body.english || '').trim();
-  const arabicFull  = (req.body.arabic  || '').trim();
-  const reference   = (req.body.reference || '').trim();
-  const collection  = (req.body.collection || '').trim().toLowerCase();
+  const englishFull = cleanInput(req.body.english);
+  const arabicFull  = cleanInput(req.body.arabic);
+  const reference   = cleanInput(req.body.reference, 200);
+  const collection  = cleanInput(req.body.collection, 40).toLowerCase();
 
-  // Defensive: Always return all 3 fields
+  // Keep the evaluation key for older clients, but do not ask AI to grade hadith chains.
   const errorPayload = {
     commentary: 'No commentary.',
     chain: 'No chain.',
-    evaluation: 'No evaluation.'
+    evaluation: '',
+    authenticityStatus: 'Not specified in source',
+    authenticitySource: 'available source metadata/text',
+    sourceCaution: ''
   };
 
   if (!englishFull || !arabicFull || !reference || !collection) {
     return res.json({
       commentary: 'Error: Missing required field.',
       chain: '',
-      evaluation: ''
+      evaluation: '',
+      authenticityStatus: 'Not specified in source',
+      authenticitySource: 'available source metadata/text',
+      sourceCaution: ''
     });
   }
 
-  const cacheKey = `${reference}|${collection}`;
-  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || req.socket.remoteAddress;
- if (commentaryCache[cacheKey]) {
-  return res.json(commentaryCache[cacheKey]);
+  const cacheKey = `${COMMENTARY_CACHE_VERSION}|${reference}|${collection}`;
+  const ip = getClientIp(req);
+  const cachedCommentary = getCachedCommentary(cacheKey);
+ if (cachedCommentary) {
+  return res.json(cachedCommentary);
 }
 
 if (!checkAiLimit(ip)) {
   return res.json({
     commentary: 'Daily AI limit reached. Please try again after 24 hours.',
     chain: '',
-    evaluation: ''
+    evaluation: '',
+    authenticityStatus: 'Not specified in source',
+    authenticitySource: 'available source metadata/text',
+    sourceCaution: ''
   });
 }
+pruneAiCallTracker();
   const snippet = truncate(englishFull, 500);
-  const systemPrompt =
-    `You are a specialist in Hadith sciences, trained on the methodology of Salafi scholars like Ibn Taymiyyah, Ibn al-Qayyim, Al-Albani, Ibn Baz, Ibn Uthaymeen, as well as classical scholars like Ibn Hajar, Al-Dhahabi, and Al-Shafi'i.\n` +
-    `Output exactly these three sections in order and nothing else:\n` +
-    `Commentary: 3–4 sentences explaining con, meaning, and importance but **do not comment on the chain** here. If the hadith is from Sahih Bukhari, base the explanation on Fath al-Bari by Ibn Hajar. If the hadith is from Sahih Muslim, base the explanation on Sharh of Imam Nawawi. If neither is available, provide a general con explanation from the known Sunnah.\n` +
-    `Chain of Narrators: extract from the Arabic text and transliterate into English, separated by →.\n` +
-    `Evaluation of Hadith: - Provide a **brief but accurate** analysis of the chain's strength or weakness, based **only on the known status of narrators**. 
-    - If a narrator is known to be weak, explicitly mention it and why (e.g., "X is considered weak by Al-Albani").
-    - If there is a known disconnection (e.g., mursal, missing link), say it clearly.
-    - If the chain is from Sahih Bukhari or Sahih Muslim, **always state: "Chain is sound and reliable by default."**, if the hadith is widely narrated by multiple companions across different chains, mention: 'Classification: Mutawatir'. Otherwise, consider it Ahad.
-    - For each narrator, verify based on rijāl data and known historical lifespans whether he could have met the next. If any could not (e.g., one died decades before the next was born), explicitly state: “Chain is disconnected (munqati‘) between X and Y due to non-overlapping lifespans.”
-    - If a narrator is unknown or not recorded in the major rijal works, explicitly note: “X is majhul (unknown narrator),” then classify the hadith as da‘if gharib if that is the only route.   
-    - Do not assume chain continuity unless clearly verified by classical hadith scholars or reliable rijāl data.
-    - If a narrator's status is unknown, say: "Status of [name] is unclear."
-    - But do not label a chain “munqati‘” unless you have clear evidence (e.g. a known death-before-birth gap). If the only problem is a majhul narrator, call it majhul—not munqati.
-    - Do NOT attempt to classify a hadith as mutawatir or ahad unless it is explicitly mentioned in reliable classical sources (e.g., Ibn Hajar, Al-Albani). If no explicit mention is available, state: "Classification of ahad or mutawatir not specified."
-  
-  Only classify a hadith as Qudsi, Marfu', or Mawquf if it is clearly indicated by its wording or attribution:
-- **Hadith Qudsi**: Classify as “Hadith Qudsi” if the Prophet is narrating words from Allah (ﷻ), whether directly or indirectly. This includes:
-  • If the hadith begins with “Allah said” (e.g., قال الله).
-  • If it says: “The Prophet narrated from his Lord” (e.g., يرويه عن ربه).
-  • Phrases like: “My Lord said...”, “It is reported from Allah...”, or “Allah, the Blessed and Exalted, said...”.
-  These are not from the Qur’an, but are divine speech reported through the Prophet ﷺ.
-- **Marfu’**: Statement directly traced to the Prophet ﷺ.
-- **Mawquf**: Statement only traced to a Companion.
-- If unclear after reasonable effort, say: "Classification of Qudsi, Marfu’, or Mawquf not specified."
-
-    Finally, conclude the Evaluation section with a separate paragraph titled "Fiqh Ruling:", summarizing the legal ruling derived from this hadith based on known Salafi fiqh principles (e.g., Ibn Baz, Ibn Uthaymeen) without naming “Salafi”. (e.g., wajib, mustahabb, makruh, haram). If scholars differ, briefly mention the strongest opinion and why. Be concise, precise, and avoid fabricating any sources or narrators`;
-
+  const sourceHadith = findHadithByReference(reference, collection);
+  const authenticity = extractAuthenticityStatus(
+    sourceHadith,
+    collection || inferCollectionFromReference(reference),
+    `${arabicFull} ${englishFull}`
+  );
+  const weakReportCaution = needsWeakReportCaution(authenticity.status)
+    ? buildWeakReportCaution(authenticity.status)
+    : '';
   const userPrompt =
     `Reference: ${reference}\n` +
     `Collection: ${collection}\n` +
+    `Source Authenticity Status: ${authenticity.status}\n` +
+    `Authenticity Source: ${authenticity.source}\n` +
+    `Educational Caution: ${authenticity.caution || 'None'}\n` +
+    `Weak Report Commentary Rule: ${weakReportCaution || 'None'}\n` +
     `Hadith (Arabic): ${arabicFull}\n` +
     `Hadith (English): ${snippet}`;
 
+  const educationalSystemPrompt =
+    `You are a careful educational assistant for people studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
+    `Output exactly these two sections in order and nothing else:\n` +
+    `Commentary: Give a comprehensive but concise educational explanation. If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence. If Educational Caution is not "None", include it in beginner-friendly wording. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and a natural practical takeaway using wording such as "A practical benefit is", "This can help the reader", "One takeaway is", or "In daily practice". Do not use the phrase "for laymen". Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
+    `Chain of Narrators: extract only narrator names from the Arabic isnad and transliterate into English, separated by ->. Do not include commentary sentences, explanations, labels, grades, or notes. If a clean narrator-name chain is not available, write exactly "Chain not available".\n` +
+    `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not create an Authenticity Status section. The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed. If unsure, keep the chain list simple and say "Chain not available."`;
+
   try {
-    const aiResp = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'openai/gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userPrompt }
-        ],
-        temperature: 0.0,
-        max_tokens: 700
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    let raw = aiResp.data.choices[0]?.message?.content || '';
-    raw = raw.replace(/```[\\s\\S]*?```/g, '').trim();
-
-    // More forgiving regex:
-    const commentaryMatch = raw.match(/Commentary[^:]*:\s*([\s\S]*?)(?=Chain of Narrators[^:]*:)/i);
-    const chainMatch      = raw.match(/Chain of Narrators[^:]*:\s*([\s\S]*?)(?=Evaluation[^:]*:)/i);
-    const evalMatch       = raw.match(/Evaluation[^:]*:\s*([\s\S]*)/i);
+    let raw = await callOpenRouter([
+      { role: 'system', content: educationalSystemPrompt },
+      { role: 'user',   content: userPrompt }
+    ], { temperature: 0.0, max_tokens: 700 });
+    raw = raw.replace(/```[\s\S]*?```/g, '').trim();
+    const parsedCommentary = parseAiCommentary(raw);
+    const guardedCommentary = polishCommentaryLanguage(applyWeakReportCommentaryGuard(
+      parsedCommentary.commentary,
+      authenticity.status
+    ));
 
     const payload = {
-      commentary: commentaryMatch && commentaryMatch[1].trim() ? commentaryMatch[1].trim() : 'No commentary.',
-      chain:      chainMatch && chainMatch[1].trim() ? chainMatch[1].trim() : 'No chain.',
-      evaluation: evalMatch && evalMatch[1].trim() ? evalMatch[1].trim() : 'No evaluation.'
+      commentary: guardedCommentary,
+      chain: parsedCommentary.chain,
+      evaluation: '',
+      authenticityStatus: authenticity.status,
+      authenticitySource: authenticity.source,
+      sourceCaution: authenticity.caution
     };
 
- if (['bukhari', 'muslim'].includes(collection)) {
-  if (!payload.evaluation.toLowerCase().includes('chain is sound and reliable by default')) {
-    payload.evaluation += '\nChain is sound and reliable by default.';
-  }
-}
-
     
-    commentaryCache[cacheKey] = payload;
+    setCachedCommentary(cacheKey, payload);
     return res.json(payload);
 
   } catch (err) {
@@ -442,63 +885,44 @@ if (!checkAiLimit(ip)) {
 // ─── 9) NARRATOR BIO ───────────────────────────────────────────────────────────
 app.post('/narrator-bio', async (req, res) => {
   try {
-    const name = (req.body.name || '').trim();
+    const name = cleanInput(req.body.name, 120);
     if (!name) {
       return res.json({ bio: 'No narrator name provided.' });
     }
 
-    // 1) System prompt: instructions only, no name interpolation
-    const systemPrompt = `
-You are a Salafi-trained hadith researcher. The user will give you the name of a narrator. Respond with a structured biography in Markdown using **bold labels only**—no code fences, no bullet points.
+    const educationalBioPrompt = `
+You are an educational assistant helping laymen learn basic hadith narrator context.
 
-Only include confirmed narrators found in the major hadith chains from the 9 primary books: Bukhari, Muslim, Abu Dawood, Tirmidhi, Nasai, Ibn Majah, Ahmad, Malik, and Darimi.
+The user will give one narrator name. Return a concise, useful Markdown biography using **bold labels only** and no bullet points, code fences, scholar evaluation commentary, or narrator authenticity discussion.
 
-If the narrator is unclear, ambiguous, or not found in the classical rijal books, respond exactly in this format:  
-**Narrator unclear:** [Brief reason why the narrator is not known or verified]
+Write for beginners learning Islamic history and hadith transmission. Make the summary warm, specific, and educational. Focus only on historical role, importance in hadith transmission, connection to major scholars or companions, and educational significance. Do not evaluate whether the narrator's reports are accepted or rejected.
+
+If a detail is not known from your general knowledge, omit that detail instead of filling the response with placeholders.
 
 Use this exact format:
 
-**Name:** [Full name]  
-**Birth:** [Hijri year or estimate]  
-**Death:** [Hijri year]  
-**Era:** [e.g. Sahabi, Tabi'i, Tabi' al-Tabi'in]  
-
-**Teachers:** [List at least 3–5 known teachers]  
-
-**Students:** [List at least 3–5 known students]  
-
-**Scholarly Remarks:** Summarize what other major scholars said (e.g. Al-Dhahabi, Yahya ibn Ma’in, Al-Nasa’i, Ibn Sa’d, Ibn Hajar, al-Albani).  
-If any disagreement exists, explain clearly but briefly.  
-End with a clarifying statement if Ibn Hajar maintained his grading in Taqrib al-Tahdib despite criticism.
-
-Now return the full biography for the narrator provided by the user.
+**Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
+**Place/Region:** [City, region, or scholarly center if known]
+**Known For:** [1-2 beginner-friendly sentences about historical role or educational significance]
+**Role in Hadith Transmission:** [1-2 sentences about how this narrator connects reports, teachers, students, or collections]
+**Teachers:** [Known teachers, if known]
+**Students:** [Known students, if known]
+**Collections:** [Major hadith collections where this narrator appears when known]
+**Educational Note:** [A short layman-friendly note explaining why this narrator matters for learning hadith history]
     `.trim();
 
     // 2) Send the narrator’s name as the user message
     const messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: educationalBioPrompt },
       { role: 'user',   content: name }
     ];
 
-    const ai = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'openai/gpt-4o-mini',
-        messages,
-        max_tokens: 800,
-        temperature: 0.0
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const rawAi = await callOpenRouter(messages, { max_tokens: 800, temperature: 0.0 });
 
     // 3) Don’t strip bold markers—just remove code fences if they appear
-    let raw = ai.data.choices[0]?.message?.content || '';
+    let raw = rawAi || '';
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
+    raw = sanitizeNarratorBio(raw);
 
     return res.json({ bio: raw });
   } catch (err) {
@@ -509,16 +933,12 @@ Now return the full biography for the narrator provided by the user.
 
 // ─── 10) START SERVER ───────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
-  const allHadiths = [
-    ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
-    ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
-    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
-  ];
-
   res.json({
     status: "ok",
-    totalHadiths: allHadiths.length,
+    totalHadiths: allHadithsCache.length,
     fuseReady: !!fuse,
+    commentaryCacheSize: commentaryCache.size,
+    aiRateLimitTrackedIps: aiCallTracker.size,
     collections: {
       bukhari: bukhariHadiths.length,
       muslim: muslimHadiths.length,
@@ -534,4 +954,14 @@ app.get("/health", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Takhrij backend running on port ${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Takhrij backend running on port ${PORT}`));
+}
+
+module.exports = {
+  app,
+  extractAuthenticityStatus,
+  normalizeArabicForDetection,
+  sanitizeNarratorChain,
+  formatDidYouMeanFallback
+};
