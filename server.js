@@ -728,7 +728,7 @@ function formatDidYouMeanFallback(query, suggestions = []) {
   return `---\nEnglish Matn:\nNo verified match found for "${cleanQuery}".${suggestionText}\n\n` +
     `Try exact Arabic or English wording for better results.\n\n` +
     `This result is not a hadith verification or grading.\n\n` +
-    `Reference: AI Generated\n` +
+    `Reference: Search Suggestions\n` +
     `Note: No local hadith result was matched.`;
 }
 
