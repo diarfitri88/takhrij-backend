@@ -273,8 +273,25 @@ function getHadithReference(h) {
 }
 
 function getSunnahReferenceNumber(h) {
-  const canonical = String(h?.sunnahReference || '');
+  const canonical = String(h?.sunnahReference || h?.canonicalRef || '');
   return (canonical.match(/:(\d+[a-z]?)/i) || [])[1] || '';
+}
+
+function hasCanonicalReference(h) {
+  return Boolean(h?.sunnahReference || h?.canonicalRef || h?.sunnahUrl || h?.reference);
+}
+
+function getPublicReferenceTokens(h) {
+  const tokens = [
+    getSunnahReferenceNumber(h),
+    String(h.sunnahUrl || '').match(/:(\d+[a-z]?)/i)?.[1],
+    String(h.canonicalRef || '').match(/:(\d+[a-z]?)/i)?.[1],
+    ...String(h.reference || '').match(/\d+\s*[a-z]?/gi) || []
+  ];
+
+  return tokens
+    .filter(Boolean)
+    .map(value => String(value).replace(/\s+/g, '').toLowerCase());
 }
 
 function normalizeCollectionKey(value = '') {
@@ -288,19 +305,32 @@ function normalizeCollectionKey(value = '') {
     sahihalmuslim: 'muslim',
     tirmidhi: 'tirmidhi',
     jamitirmidhi: 'tirmidhi',
+    jamiattirmidhi: 'tirmidhi',
+    jamiatttirmidhi: 'tirmidhi',
+    jamiatirmidhi: 'tirmidhi',
     nasai: 'nasai',
+    nasaii: 'nasai',
+    annasai: 'nasai',
+    alnasaai: 'nasai',
+    alnasai: 'nasai',
     sunannasai: 'nasai',
     malik: 'malik',
     muwattamalik: 'malik',
     ibnmajah: 'ibnmajah',
     sunanibnmajah: 'ibnmajah',
     darimi: 'darimi',
+    addarimi: 'darimi',
+    aldarimi: 'darimi',
     sunandarimi: 'darimi',
     ahmed: 'ahmed',
     ahmad: 'ahmed',
     musnadahmad: 'ahmed',
     abudawud: 'abudawud',
+    abudawood: 'abudawud',
+    abidawood: 'abudawud',
     abidawud: 'abudawud',
+    sunanabudawud: 'abudawud',
+    sunanabudawood: 'abudawud',
     sunanabidawud: 'abudawud'
   };
 
@@ -319,6 +349,32 @@ function inferCollectionFromReference(reference = '') {
   if (normalized.includes('ahmad') || normalized.includes('ahmed')) return 'ahmed';
   if (normalized.includes('darimi')) return 'darimi';
   return '';
+}
+
+function parseReferenceQuery(query = '') {
+  const original = String(query || '').trim();
+  if (!original) return null;
+
+  const normalized = original
+    .toLowerCase()
+    .replace(/[’‘`]/g, "'")
+    .replace(/\bal[-\s]+/g, 'al ')
+    .replace(/[:#]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const tokenMatch = normalized.match(/\b(\d+\s*[a-z]?)\b$/i);
+  if (!tokenMatch) return null;
+
+  const referenceToken = tokenMatch[1].replace(/\s+/g, '').toLowerCase();
+  const collectionText = normalized.slice(0, tokenMatch.index).trim();
+  if (!collectionText) return null;
+
+  const collectionKey = normalizeCollectionKey(collectionText);
+  if (!names[collectionKey]) return null;
+
+  return { collectionKey, referenceToken };
 }
 
 function normalizeArabicForDetection(value = '') {
@@ -342,24 +398,27 @@ function findHadithByReference(reference, collection) {
 
   const exactMatch = candidates.find(h => {
     const knownReference = getHadithReference(h).toLowerCase();
-    return knownReference === referenceText || String(h.sunnahReference || '').toLowerCase() === referenceText;
+    const canonicalFields = [
+      h.sunnahReference,
+      h.canonicalRef,
+      h.sunnahUrl
+    ].filter(Boolean).map(value => String(value).toLowerCase());
+
+    return knownReference === referenceText || canonicalFields.includes(referenceText);
   });
   if (exactMatch) return exactMatch;
 
   const canonicalNumberMatch = candidates.find(h => {
-    const publicNumbers = [
-      getSunnahReferenceNumber(h),
-      String(h.reference || '').match(/\d+\s*[a-z]?/i)?.[0]?.replace(/\s+/g, '')
-    ].filter(Boolean).map(value => String(value).toLowerCase());
-
-    return referenceToken && publicNumbers.includes(referenceToken);
+    return referenceToken && getPublicReferenceTokens(h).includes(referenceToken);
   });
   if (canonicalNumberMatch) return canonicalNumberMatch;
 
   return candidates.find(h => {
     if (collectionKey && h.collection !== collectionKey) return false;
 
-    // Last-resort compatibility for older clients that may still send local IDs.
+    if (hasCanonicalReference(h)) return false;
+
+    // Last-resort compatibility for records still awaiting canonical mapping.
     // Public display and exact matching above use canonical Sunnah.com references.
     const hadithNumbers = [h.hadithnumber, h.idInBook, h.id, h.number]
       .filter(Boolean)
@@ -712,6 +771,31 @@ function searchHadiths(query) {
   return results.slice(0, 10).map(r => r.item.hadith);
 }
 
+function findHadithByReferenceQuery(query) {
+  const parsed = parseReferenceQuery(query);
+  if (!parsed) return null;
+
+  return findHadithByReference(`${parsed.collectionKey}:${parsed.referenceToken}`, parsed.collectionKey);
+}
+
+function formatSearchResults(matches) {
+  return matches.map(h => {
+    const en = getEnglishText(h);
+
+    const ar  = h.arabic || "[No Arabic]";
+    const ref = getHadithReference(h);
+    const authenticity = extractAuthenticityStatus(h, h.collection);
+     // Mutawatir Check
+const mutawatirInfo = checkMutawatir(ref);
+const classification = mutawatirInfo
+? `Classification: Mutawatir\nNotes: ${mutawatirInfo.notes}`
+: `Classification: Ahad`;
+
+
+    return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\nAuthenticity Status: ${authenticity.status}\n${classification}`;
+  }).join("\n");
+}
+
 function extractSuggestionPhrase(h, queryKeywords = []) {
   const english = normalize(getEnglishText(h));
   const arabic = normalizeArabicForDetection(h?.arabic || '');
@@ -794,6 +878,11 @@ app.post("/search-hadith", async (req, res) => {
     return res.json({ result: 'âŒ No query provided.' });
   }
 
+  const referenceMatch = findHadithByReferenceQuery(q);
+  if (referenceMatch) {
+    return res.json({ result: formatSearchResults([referenceMatch]) });
+  }
+
   const matches = searchHadiths(q);
 
 if (matches === null) {
@@ -803,22 +892,7 @@ if (matches === null) {
 }
 
   if (matches.length) {
-    const result = matches.map(h => {
-      const en = getEnglishText(h);
-
-      const ar  = h.arabic || "[No Arabic]";
-      const ref = getHadithReference(h);
-      const authenticity = extractAuthenticityStatus(h, h.collection);
-       // Mutawatir Check
-  const mutawatirInfo = checkMutawatir(ref);
-  const classification = mutawatirInfo
-  ? `Classification: Mutawatir\nNotes: ${mutawatirInfo.notes}`
-  : `Classification: Ahad`;
-
-
-      return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\nAuthenticity Status: ${authenticity.status}\n${classification}`;
-    }).join("\n");
-    return res.json({ result });
+    return res.json({ result: formatSearchResults(matches) });
  } else {
   // Local-only fallback: suggest better search phrases without calling GPT or grading anything.
   const fallbackQuery = (req.body.query || '').trim();

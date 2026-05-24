@@ -8,7 +8,8 @@
     "verify:tirmidhi-2970": "node scripts/verify-tirmidhi-2970-authenticity.js",
     "verify:chain": "node scripts/verify-chain-sanitizer.js",
     "verify:fallback": "node scripts/verify-did-you-mean-fallback.js",
-    "verify:canonical-refs": "node scripts/validate-canonical-references.js"
+    "verify:canonical-refs": "node scripts/validate-canonical-references.js",
+    "verify:reference-search": "node scripts/verify-canonical-reference-search.js"
   },
   "dependencies": {
     "axios": "^0.27.2",
