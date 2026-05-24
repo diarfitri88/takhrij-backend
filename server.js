@@ -778,8 +778,7 @@ function findHadithByReferenceQuery(query) {
   return findHadithByReference(`${parsed.collectionKey}:${parsed.referenceToken}`, parsed.collectionKey);
 }
 
-function formatSearchResults(matches) {
-  return matches.map(h => {
+function formatHadithResult(h) {
     const en = getEnglishText(h);
 
     const ar  = h.arabic || "[No Arabic]";
@@ -793,7 +792,33 @@ const classification = mutawatirInfo
 
 
     return `---\nArabic Matn: ${ar}\nEnglish Matn: ${en}\nReference: ${ref}\nAuthenticity Status: ${authenticity.status}\n${classification}`;
-  }).join("\n");
+}
+
+function serializeHadithResult(h) {
+  const authenticity = extractAuthenticityStatus(h, h.collection);
+  return {
+    arabic: h.arabic || '',
+    english: getEnglishText(h),
+    reference: getHadithReference(h),
+    collection: h.collection || '',
+    authenticityStatus: authenticity.status,
+    authenticitySource: authenticity.source || '',
+    sourceCaution: authenticity.caution || '',
+    localId: h.id ?? null,
+    idInBook: h.idInBook ?? null,
+    sunnahReference: h.sunnahReference || h.canonicalRef || '',
+    sunnahUrl: h.sunnahUrl || '',
+    bookNumber: h.bookNumber ?? null,
+    bookName: h.bookName || '',
+    hadithInBook: h.hadithInBook || ''
+  };
+}
+
+function buildSearchPayload(matches) {
+  return {
+    result: matches.map(formatHadithResult).join("\n"),
+    results: matches.map(serializeHadithResult)
+  };
 }
 
 function extractSuggestionPhrase(h, queryKeywords = []) {
@@ -880,7 +905,7 @@ app.post("/search-hadith", async (req, res) => {
 
   const referenceMatch = findHadithByReferenceQuery(q);
   if (referenceMatch) {
-    return res.json({ result: formatSearchResults([referenceMatch]) });
+    return res.json(buildSearchPayload([referenceMatch]));
   }
 
   const matches = searchHadiths(q);
@@ -892,7 +917,7 @@ if (matches === null) {
 }
 
   if (matches.length) {
-    return res.json({ result: formatSearchResults(matches) });
+    return res.json(buildSearchPayload(matches));
  } else {
   // Local-only fallback: suggest better search phrases without calling GPT or grading anything.
   const fallbackQuery = (req.body.query || '').trim();

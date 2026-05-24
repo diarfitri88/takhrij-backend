@@ -28,11 +28,19 @@ async function search(query) {
   });
   if (!response.ok) throw new Error(`Search failed for "${query}" with ${response.status}`);
   const payload = await response.json();
+  return payload;
+}
+
+function resultText(payload) {
   return String(payload.result || '');
 }
 
-function firstReference(result) {
-  return (result.match(/^Reference: .+$/m) || [''])[0];
+function firstReference(payload) {
+  return (resultText(payload).match(/^Reference: .+$/m) || [''])[0];
+}
+
+function firstStructuredReference(payload) {
+  return payload.results?.[0]?.reference || '';
 }
 
 function assert(condition, message) {
@@ -57,6 +65,10 @@ async function main() {
       firstReference(bukhariSpace) === 'Reference: Sahih al-Bukhari 755',
       `"bukhari 755" should return canonical Sahih al-Bukhari 755, got ${firstReference(bukhariSpace)}`
     );
+    assert(
+      firstStructuredReference(bukhariSpace) === 'Sahih al-Bukhari 755',
+      `"bukhari 755" should include structured results[0].reference, got ${firstStructuredReference(bukhariSpace)}`
+    );
 
     const bukhariColon = await search('bukhari:755');
     assert(
@@ -74,6 +86,10 @@ async function main() {
     assert(
       firstReference(muslim) === 'Reference: Sahih Muslim 1165 b',
       `"muslim 1165b" should return Sahih Muslim 1165 b, got ${firstReference(muslim)}`
+    );
+    assert(
+      firstStructuredReference(muslim) === 'Sahih Muslim 1165 b',
+      `"muslim 1165b" should include structured results[0].reference, got ${firstStructuredReference(muslim)}`
     );
 
     const tirmidhi = await search('tirmidhi 2970');
