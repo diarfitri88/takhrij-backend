@@ -177,12 +177,39 @@ const urls = {
   abudawud:  "https://firebasestorage.googleapis.com/v0/b/takhrij-json.firebasestorage.app/o/abudawud.json?alt=media&token=ac71e9bb-ac98-4187-b11d-4bf7fa458174"
 };
 
+const localHadithFiles = {
+  bukhari:   path.join(__dirname, "hadith", "bukhari.json"),
+  muslim:    path.join(__dirname, "hadith", "muslim.json"),
+  tirmidhi:  path.join(__dirname, "hadith", "tirmidhi.json"),
+  nasai:     path.join(__dirname, "hadith", "nasai.json"),
+  malik:     path.join(__dirname, "hadith", "malik.json"),
+  ibnmajah:  path.join(__dirname, "hadith", "ibnmajah.json"),
+  darimi:    path.join(__dirname, "hadith", "darimi.json"),
+  ahmed:     path.join(__dirname, "hadith", "ahmed.json"),
+  abudawud:  path.join(__dirname, "hadith", "abudawud.json")
+};
+
+function readHadithRows(payload) {
+  return Array.isArray(payload) ? payload : (Array.isArray(payload.hadiths) ? payload.hadiths : []);
+}
+
+async function loadCollectionRows(collection) {
+  const localPath = localHadithFiles[collection];
+  try {
+    const localPayload = JSON.parse(fs.readFileSync(localPath, "utf8"));
+    return readHadithRows(localPayload);
+  } catch (localErr) {
+    console.warn(`Local hadith file unavailable for ${collection}; falling back to remote source.`);
+    const response = await axios.get(urls[collection], { timeout: 20000 });
+    return readHadithRows(response.data);
+  }
+}
+
 async function loadHadiths() {
   try {
     const collections = Object.keys(urls);
-    const results = await Promise.all(collections.map(collection => axios.get(urls[collection], { timeout: 20000 })));
-    results.forEach((res, i) => {
-      const arr = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.hadiths) ? res.data.hadiths : []);
+    const results = await Promise.all(collections.map(collection => loadCollectionRows(collection)));
+    results.forEach((arr, i) => {
       const mapped = arr.map(h => ({ ...h, collection: collections[i] }));
       switch (collections[i]) {
         case "bukhari":  bukhariHadiths  = mapped; break;
@@ -209,7 +236,7 @@ if (require.main === module) {
 }
 
 const names = {
-  bukhari:   "Sahih Bukhari",
+  bukhari:   "Sahih al-Bukhari",
   muslim:    "Sahih Muslim",
   tirmidhi:  "Jami` at-Tirmidhi",
   nasai:     "Sunan an-Nasa'i",
@@ -217,11 +244,11 @@ const names = {
   ibnmajah:  "Sunan Ibn Majah",
   darimi:    "Sunan ad-Darimi",
   ahmed:     "Musnad Ahmad",
-  abudawud:  "Sunan Abu Dawood"
+  abudawud:  "Sunan Abi Dawud"
 };
 
 const refFormatters = {
-  default: h => `${names[h.collection] || "Unknown"} ${h.hadithnumber || h.id || h.number}`
+  default: () => "Reference under review"
 };
 
 function getAllHadiths() {
@@ -241,9 +268,13 @@ function getEnglishText(h) {
 }
 
 function getHadithReference(h) {
-  return h.reference
-    ? h.reference
-    : (refFormatters[h.collection] || refFormatters.default)(h);
+  if (h?.reference && !String(h.reference).includes("Book Unknown")) return h.reference;
+  return (refFormatters[h?.collection] || refFormatters.default)(h);
+}
+
+function getSunnahReferenceNumber(h) {
+  const canonical = String(h?.sunnahReference || '');
+  return (canonical.match(/:(\d+[a-z]?)/i) || [])[1] || '';
 }
 
 function normalizeCollectionKey(value = '') {
@@ -280,6 +311,13 @@ function inferCollectionFromReference(reference = '') {
   const normalized = String(reference).toLowerCase();
   if (normalized.includes('bukhari')) return 'bukhari';
   if (normalized.includes('muslim')) return 'muslim';
+  if (normalized.includes('tirmidhi')) return 'tirmidhi';
+  if (normalized.includes('nasa')) return 'nasai';
+  if (normalized.includes('dawud') || normalized.includes('dawood')) return 'abudawud';
+  if (normalized.includes('ibn majah')) return 'ibnmajah';
+  if (normalized.includes('malik')) return 'malik';
+  if (normalized.includes('ahmad') || normalized.includes('ahmed')) return 'ahmed';
+  if (normalized.includes('darimi')) return 'darimi';
   return '';
 }
 
@@ -298,19 +336,36 @@ function normalizeArabicForDetection(value = '') {
 function findHadithByReference(reference, collection) {
   const collectionKey = normalizeCollectionKey(collection || inferCollectionFromReference(reference));
   const referenceText = String(reference || '').toLowerCase();
-  const referenceNumber = (referenceText.match(/\d+/g) || []).pop();
+  const referenceToken = (referenceText.match(/\d+\s*[a-z]?/gi) || []).pop()?.replace(/\s+/g, '').toLowerCase();
 
-  return allHadithsCache.find(h => {
+  const candidates = allHadithsCache.filter(h => !collectionKey || h.collection === collectionKey);
+
+  const exactMatch = candidates.find(h => {
+    const knownReference = getHadithReference(h).toLowerCase();
+    return knownReference === referenceText || String(h.sunnahReference || '').toLowerCase() === referenceText;
+  });
+  if (exactMatch) return exactMatch;
+
+  const canonicalNumberMatch = candidates.find(h => {
+    const publicNumbers = [
+      getSunnahReferenceNumber(h),
+      String(h.reference || '').match(/\d+\s*[a-z]?/i)?.[0]?.replace(/\s+/g, '')
+    ].filter(Boolean).map(value => String(value).toLowerCase());
+
+    return referenceToken && publicNumbers.includes(referenceToken);
+  });
+  if (canonicalNumberMatch) return canonicalNumberMatch;
+
+  return candidates.find(h => {
     if (collectionKey && h.collection !== collectionKey) return false;
 
-    const knownReference = getHadithReference(h).toLowerCase();
-    if (knownReference === referenceText) return true;
-
+    // Last-resort compatibility for older clients that may still send local IDs.
+    // Public display and exact matching above use canonical Sunnah.com references.
     const hadithNumbers = [h.hadithnumber, h.idInBook, h.id, h.number]
       .filter(Boolean)
       .map(value => String(value));
 
-    return referenceNumber && hadithNumbers.includes(referenceNumber);
+    return referenceToken && hadithNumbers.includes(referenceToken);
   }) || null;
 }
 
