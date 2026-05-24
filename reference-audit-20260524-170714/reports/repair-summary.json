@@ -1,0 +1,101 @@
+{
+  "bukhari": {
+    "inputRows": 7277,
+    "sunnahRowsScraped": 7277,
+    "bookPagesScraped": 97,
+    "matched": 7277,
+    "exactFullText": 7246,
+    "exactTextOnly": 0,
+    "exactArabic": 31,
+    "duplicateSequenced": 23,
+    "unresolved": 0
+  },
+  "muslim": {
+    "inputRows": 7459,
+    "sunnahRowsScraped": 7368,
+    "bookPagesScraped": 56,
+    "matched": 7368,
+    "exactFullText": 7287,
+    "exactTextOnly": 2,
+    "exactArabic": 79,
+    "duplicateSequenced": 239,
+    "unresolved": 91
+  },
+  "tirmidhi": {
+    "inputRows": 4053,
+    "sunnahRowsScraped": 4053,
+    "bookPagesScraped": 49,
+    "matched": 4052,
+    "exactFullText": 3256,
+    "exactTextOnly": 95,
+    "exactArabic": 701,
+    "duplicateSequenced": 25,
+    "unresolved": 1
+  },
+  "nasai": {
+    "inputRows": 5768,
+    "sunnahRowsScraped": 5685,
+    "bookPagesScraped": 51,
+    "matched": 5685,
+    "exactFullText": 4752,
+    "exactTextOnly": 6,
+    "exactArabic": 927,
+    "duplicateSequenced": 119,
+    "unresolved": 83
+  },
+  "abudawud": {
+    "inputRows": 5276,
+    "sunnahRowsScraped": 5276,
+    "bookPagesScraped": 43,
+    "matched": 5276,
+    "exactFullText": 5250,
+    "exactTextOnly": 1,
+    "exactArabic": 25,
+    "duplicateSequenced": 6,
+    "unresolved": 0
+  },
+  "ibnmajah": {
+    "inputRows": 4345,
+    "sunnahRowsScraped": 4079,
+    "bookPagesScraped": 37,
+    "matched": 4079,
+    "exactFullText": 3932,
+    "exactTextOnly": 2,
+    "exactArabic": 145,
+    "duplicateSequenced": 10,
+    "unresolved": 266
+  },
+  "malik": {
+    "inputRows": 1985,
+    "sunnahRowsScraped": 1860,
+    "bookPagesScraped": 61,
+    "matched": 1860,
+    "exactFullText": 1845,
+    "exactTextOnly": 0,
+    "exactArabic": 15,
+    "duplicateSequenced": 1,
+    "unresolved": 125
+  },
+  "ahmed": {
+    "inputRows": 1374,
+    "sunnahRowsScraped": 1374,
+    "bookPagesScraped": 8,
+    "matched": 1374,
+    "exactFullText": 1138,
+    "exactTextOnly": 16,
+    "exactArabic": 220,
+    "duplicateSequenced": 17,
+    "unresolved": 0
+  },
+  "darimi": {
+    "inputRows": 3406,
+    "sunnahRowsScraped": 2757,
+    "bookPagesScraped": 23,
+    "matched": 2433,
+    "exactFullText": 0,
+    "exactTextOnly": 0,
+    "exactArabic": 2433,
+    "duplicateSequenced": 4,
+    "unresolved": 973
+  }
+}
