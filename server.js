@@ -27,7 +27,7 @@ const COMMENTARY_CACHE_VERSION = 'weak-caution-language-v5';
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
 
-const MAX_CALLS = 15;
+const MAX_CALLS = 5;
 const TIME_LIMIT = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 function checkAiLimit(ip) {
@@ -1184,6 +1184,12 @@ app.post('/narrator-bio', async (req, res) => {
     if (!name) {
       return res.json({ bio: 'No narrator name provided.' });
     }
+
+    const ip = getClientIp(req);
+    if (!checkAiLimit(ip)) {
+      return res.json({ bio: 'Daily AI limit reached. Please try again after 24 hours.' });
+    }
+    pruneAiCallTracker();
 
     const educationalBioPrompt = `
 You are an educational assistant helping laymen learn basic hadith narrator context.
