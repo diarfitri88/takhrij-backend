@@ -161,6 +161,7 @@ function checkMutawatir(reference) {
 // ─── 4) LOAD HADITH COLLECTIONS ────────────────────────────────────────────────
 let bukhariHadiths = [], muslimHadiths = [], tirmidhiHadiths = [], nasaiHadiths = [];
 let malikHadiths = [], ibnMajahHadiths = [], darimiHadiths = [], ahmedHadiths = [], abuDawudHadiths = [];
+let localExtraHadiths = [];
 // Keep combined search data cached after startup; rebuilding it per request is costly for large JSON collections.
 let allHadithsCache = [];
 let fuseDataCache = [];
@@ -189,8 +190,85 @@ const localHadithFiles = {
   abudawud:  path.join(__dirname, "hadith", "abudawud.json")
 };
 
+const localExtraHadithFiles = {
+  shamail_muhammadiyah: path.join(__dirname, "data", "extraHadith", "shamail_muhammadiyah.json"),
+  riyad_assalihin: path.join(__dirname, "data", "extraHadith", "riyad_assalihin.json"),
+  mishkat_almasabih: path.join(__dirname, "data", "extraHadith", "mishkat_almasabih.json"),
+  bulugh_almaram: path.join(__dirname, "data", "extraHadith", "bulugh_almaram.json"),
+  aladab_almufrad: path.join(__dirname, "data", "extraHadith", "aladab_almufrad.json"),
+  qudsi40: path.join(__dirname, "data", "extraHadith", "qudsi40.json"),
+  nawawi40: path.join(__dirname, "data", "extraHadith", "nawawi40.json")
+};
+
 function readHadithRows(payload) {
   return Array.isArray(payload) ? payload : (Array.isArray(payload.hadiths) ? payload.hadiths : []);
+}
+
+function normalizeLocalExtraHadith(collectionId, sourceFile, payload) {
+  const metadata = payload?.metadata || {};
+  const chapters = Array.isArray(payload?.chapters) ? payload.chapters : [];
+  const hadiths = readHadithRows(payload);
+  const chapterById = new Map(chapters.map(chapter => [String(chapter.id), chapter]));
+  const collectionTitleArabic = metadata?.arabic?.title || '';
+  const collectionTitleEnglish = metadata?.english?.title || collectionId;
+  const collectionAuthorArabic = metadata?.arabic?.author || '';
+  const collectionAuthorEnglish = metadata?.english?.author || '';
+
+  return hadiths.map(hadith => {
+    const chapter = chapterById.get(String(hadith.chapterId)) || {};
+    const english = hadith.english && typeof hadith.english === 'object' ? hadith.english : {};
+    const hadithNumber = hadith.idInBook;
+    const englishNarrator = english.narrator || '';
+    const englishText = english.text || '';
+    const arabicText = hadith.arabic || '';
+    const reference = `${collectionTitleEnglish} ${hadithNumber}`;
+
+    return {
+      collection: collectionId,
+      collectionId,
+      collectionTitleArabic,
+      collectionTitleEnglish,
+      collectionAuthorArabic,
+      collectionAuthorEnglish,
+      localHadithId: hadith.id,
+      id: hadith.id,
+      hadithNumber,
+      idInBook: hadithNumber,
+      bookId: hadith.bookId,
+      chapterId: hadith.chapterId,
+      chapterTitleArabic: chapter.arabic || '',
+      chapterTitleEnglish: chapter.english || '',
+      arabicText,
+      arabic: arabicText,
+      englishNarrator,
+      englishText,
+      english: {
+        narrator: englishNarrator,
+        text: englishText
+      },
+      reference,
+      sourceFile
+    };
+  });
+}
+
+function loadLocalExtraHadiths() {
+  const loaded = [];
+
+  Object.entries(localExtraHadithFiles).forEach(([collectionId, filePath]) => {
+    const sourceFile = path.basename(filePath);
+    try {
+      const payload = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      const normalized = normalizeLocalExtraHadith(collectionId, sourceFile, payload);
+      console.log(`Loaded local extra hadith collection ${sourceFile}: ${normalized.length}`);
+      loaded.push(...normalized);
+    } catch (err) {
+      console.error(`Failed to load local extra hadith file ${sourceFile}: ${err.message}`);
+    }
+  });
+
+  console.log(`Total local extra hadith loaded: ${loaded.length}`);
+  return loaded;
 }
 
 async function loadCollectionRows(collection) {
@@ -224,7 +302,9 @@ async function loadHadiths() {
       }
     });
     console.log("✅ All hadith collections loaded.");
+    localExtraHadiths = loadLocalExtraHadiths();
     allHadithsCache = getAllHadiths();
+    console.log(`Total combined hadith loaded: ${allHadithsCache.length}`);
     // After loading hadiths, initialize Fuse.js with all hadiths combined:
     initFuse();
   } catch (err) {
@@ -244,7 +324,14 @@ const names = {
   ibnmajah:  "Sunan Ibn Majah",
   darimi:    "Sunan ad-Darimi",
   ahmed:     "Musnad Ahmad",
-  abudawud:  "Sunan Abi Dawud"
+  abudawud:  "Sunan Abi Dawud",
+  shamail_muhammadiyah: "Shama'il Muhammadiyah",
+  riyad_assalihin: "Riyad as-Salihin",
+  mishkat_almasabih: "Mishkat al-Masabih",
+  bulugh_almaram: "Bulugh al-Maram",
+  aladab_almufrad: "Al-Adab Al-Mufrad",
+  qudsi40: "The Forty Hadith Qudsi",
+  nawawi40: "The Forty Hadith of Imam Nawawi"
 };
 
 const refFormatters = {
@@ -255,13 +342,15 @@ function getAllHadiths() {
   return [
     ...bukhariHadiths, ...muslimHadiths, ...tirmidhiHadiths,
     ...nasaiHadiths, ...malikHadiths, ...ibnMajahHadiths,
-    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths
+    ...darimiHadiths, ...ahmedHadiths, ...abuDawudHadiths,
+    ...localExtraHadiths
   ];
 }
 
 function getEnglishText(h) {
   if (typeof h.english === "string") return h.english;
   if (h.english && typeof h.english === "object") return h.english.text || h.english.body || "";
+  if (typeof h.englishText === "string") return h.englishText;
   if (typeof h.text === "string") return h.text;
   if (typeof h.body === "string") return h.body;
   return "";
@@ -331,7 +420,28 @@ function normalizeCollectionKey(value = '') {
     abidawud: 'abudawud',
     sunanabudawud: 'abudawud',
     sunanabudawood: 'abudawud',
-    sunanabidawud: 'abudawud'
+    sunanabidawud: 'abudawud',
+    shamail: 'shamail_muhammadiyah',
+    shamailmuhammadiyah: 'shamail_muhammadiyah',
+    shamailmuhammad: 'shamail_muhammadiyah',
+    riyadassalihin: 'riyad_assalihin',
+    riyadussalihin: 'riyad_assalihin',
+    riyadalsalihin: 'riyad_assalihin',
+    riyad: 'riyad_assalihin',
+    mishkat: 'mishkat_almasabih',
+    mishkatalmasabih: 'mishkat_almasabih',
+    mishkatalmisbah: 'mishkat_almasabih',
+    bulugh: 'bulugh_almaram',
+    bulughalmaram: 'bulugh_almaram',
+    aladabalmufrad: 'aladab_almufrad',
+    adabalmufrad: 'aladab_almufrad',
+    adabmufrad: 'aladab_almufrad',
+    qudsi40: 'qudsi40',
+    fortyhadithqudsi: 'qudsi40',
+    hadithqudsi40: 'qudsi40',
+    nawawi40: 'nawawi40',
+    fortyhadithnawawi: 'nawawi40',
+    arbainnawawi: 'nawawi40'
   };
 
   return aliases[input] || value;
@@ -348,6 +458,13 @@ function inferCollectionFromReference(reference = '') {
   if (normalized.includes('malik')) return 'malik';
   if (normalized.includes('ahmad') || normalized.includes('ahmed')) return 'ahmed';
   if (normalized.includes('darimi')) return 'darimi';
+  if (normalized.includes('shamail')) return 'shamail_muhammadiyah';
+  if (normalized.includes('riyad')) return 'riyad_assalihin';
+  if (normalized.includes('mishkat')) return 'mishkat_almasabih';
+  if (normalized.includes('bulugh')) return 'bulugh_almaram';
+  if (normalized.includes('adab')) return 'aladab_almufrad';
+  if (normalized.includes('qudsi')) return 'qudsi40';
+  if (normalized.includes('nawawi')) return 'nawawi40';
   return '';
 }
 
@@ -719,11 +836,20 @@ function initFuse() {
   // Prepare data for Fuse search - we keep the full hadith object as 'hadith'
   fuseDataCache = allHadithsCache.map(h => {
     const en = getEnglishText(h);
-    const ar = h.arabic || "";
+    const ar = h.arabicText || h.arabic || "";
+    const narrator = h.englishNarrator || h.english?.narrator || "";
+    const collectionTitle = h.collectionTitleEnglish || names[h.collection] || "";
+    const chapterTitle = h.chapterTitleEnglish || h.bookName || "";
+    const reference = getHadithReference(h);
 
     return {
-      text: `${normalize(en)} ${normalize(ar)}`,
-      referenceText: `${(names[h.collection] || "").toLowerCase()} ${h.reference || ""} ${h.hadithnumber || h.id || h.number || ""}`,
+      text: `${normalize(en)} ${normalize(ar)} ${normalize(narrator)} ${normalize(collectionTitle)} ${normalize(chapterTitle)} ${normalize(reference)}`,
+      arabicText: normalize(ar),
+      englishText: normalize(en),
+      englishNarrator: normalize(narrator),
+      referenceText: `${collectionTitle.toLowerCase()} ${String(reference || '').toLowerCase()} ${h.hadithnumber || h.hadithNumber || h.idInBook || h.id || h.number || ""}`,
+      collectionTitleEnglish: normalize(collectionTitle),
+      chapterTitleEnglish: normalize(chapterTitle),
       hadith: h
     };
   });
@@ -734,8 +860,13 @@ function initFuse() {
     minMatchCharLength: 4,
     ignoreLocation: true,
     keys: [
-      { name: 'text', weight: 0.85 },
-      { name: 'referenceText', weight: 0.15 }
+      { name: 'text', weight: 0.45 },
+      { name: 'arabicText', weight: 0.2 },
+      { name: 'englishText', weight: 0.2 },
+      { name: 'englishNarrator', weight: 0.05 },
+      { name: 'referenceText', weight: 0.05 },
+      { name: 'collectionTitleEnglish', weight: 0.03 },
+      { name: 'chapterTitleEnglish', weight: 0.02 }
     ]
   });
 }
@@ -755,10 +886,17 @@ function searchHadiths(query) {
   }
 
   const keywordMatches = allHadithsCache.filter(h => {
-    const ar = normalize(h.arabic || "");
+    const ar = normalize(h.arabicText || h.arabic || "");
     const en = normalize(getEnglishText(h));
+    const extra = normalize([
+      h.englishNarrator,
+      h.reference,
+      h.collectionTitleEnglish,
+      h.chapterTitleEnglish,
+      names[h.collection]
+    ].filter(Boolean).join(' '));
 
-    return keywords.every(keyword => ar.includes(keyword) || en.includes(keyword));
+    return keywords.every(keyword => ar.includes(keyword) || en.includes(keyword) || extra.includes(keyword));
   });
 
   if (keywordMatches.length) {
@@ -781,7 +919,7 @@ function findHadithByReferenceQuery(query) {
 function formatHadithResult(h) {
     const en = getEnglishText(h);
 
-    const ar  = h.arabic || "[No Arabic]";
+    const ar  = h.arabicText || h.arabic || "[No Arabic]";
     const ref = getHadithReference(h);
     const authenticity = extractAuthenticityStatus(h, h.collection);
      // Mutawatir Check
@@ -804,13 +942,16 @@ function serializeHadithResult(h) {
     authenticityStatus: authenticity.status,
     authenticitySource: authenticity.source || '',
     sourceCaution: authenticity.caution || '',
-    localId: h.id ?? null,
+    localId: h.localHadithId ?? h.id ?? null,
     idInBook: h.idInBook ?? null,
     sunnahReference: h.sunnahReference || h.canonicalRef || '',
     sunnahUrl: h.sunnahUrl || '',
     bookNumber: h.bookNumber ?? null,
     bookName: h.bookName || '',
-    hadithInBook: h.hadithInBook || ''
+    hadithInBook: h.hadithInBook || '',
+    collectionTitleEnglish: h.collectionTitleEnglish || '',
+    chapterTitleEnglish: h.chapterTitleEnglish || '',
+    englishNarrator: h.englishNarrator || ''
   };
 }
 
