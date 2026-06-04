@@ -22,7 +22,7 @@ const MAX_TEXT_FIELD_LENGTH = 4000;
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'weak-caution-language-v5';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-v1';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -664,6 +664,9 @@ function sanitizeNarratorBio(rawBio = '') {
     'known for',
     'role in hadith transmission',
     'educational note',
+    'connection to the prophetic era',
+    'historical significance',
+    'interesting fact',
     'educational importance'
   ];
   const sectionValues = new Map();
@@ -701,10 +704,13 @@ function sanitizeNarratorBio(rawBio = '') {
     ['Era/Generation', sectionValues.get('era/generation')],
     ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
     ['Known For', preferredKnownFor],
+    ['Connection to the Prophetic Era', sectionValues.get('connection to the prophetic era')],
     ['Role in Hadith Transmission', sectionValues.get('role in hadith transmission')],
     ['Teachers', sectionValues.get('teachers')],
     ['Students', sectionValues.get('students')],
     ['Collections', sectionValues.get('collections')],
+    ['Historical Significance', sectionValues.get('historical significance')],
+    ['Interesting Fact', sectionValues.get('interesting fact')],
     ['Educational Note', sectionValues.get('educational note')]
   ].filter(([, value]) => value && !isPlaceholder(value));
 
@@ -728,7 +734,7 @@ function sanitizeNarratorChain(chain = '') {
     .replace(/\*\*/g, '')
     .replace(/\r\n/g, '\n')
     .split(/\n\s*\n/)[0]
-    .split(/(?:Commentary|Explanation|Educational Commentary|Meaning|Evaluation of Hadith|Fiqh Ruling)\s*[:ï¼š-]?/i)[0]
+    .split(/(?:Lessons\s*&\s*Benefits|Commentary|Explanation|Educational Commentary|Meaning|Evaluation of Hadith|Fiqh Ruling)\s*[:ï¼š-]?/i)[0]
     .trim();
 
   if (!cleaned || /^no chain\.?$/i.test(cleaned) || /^chain not available\.?$/i.test(cleaned)) {
@@ -759,7 +765,7 @@ function sanitizeNarratorChain(chain = '') {
 
 function parseAiCommentary(raw = '') {
   const cleaned = String(raw || '').replace(/```[\s\S]*?```/g, '').trim();
-  const commentaryHeading = '(?:Commentary|Explanation|Educational Commentary|Meaning)';
+  const commentaryHeading = '(?:Lessons\\s*&\\s*Benefits|Commentary|Explanation|Educational Commentary|Meaning)';
   const chainHeading = '(?:Chain of Narrators|Narrator Chain|Isnad|Chain)';
   const commentaryRegex = new RegExp(
     `${commentaryHeading}\\s*[:：-]?\\s*([\\s\\S]*?)(?=${chainHeading}\\s*[:：-]?|$)`,
@@ -1140,12 +1146,61 @@ pruneAiCallTracker();
     `Hadith (Arabic): ${arabicFull}\n` +
     `Hadith (English): ${snippet}`;
 
-  const educationalSystemPrompt =
-    `You are a careful educational assistant for people studying hadith. Keep the explanation respectful, beginner friendly, and non-authoritative.\n` +
-    `Output exactly these two sections in order and nothing else:\n` +
-    `Commentary: Give a comprehensive but concise educational explanation. If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence. If Educational Caution is not "None", include it in beginner-friendly wording. Cover the meaning of the hadith, context or background where appropriate, key lessons, one common misunderstanding to avoid, and a natural practical takeaway using wording such as "A practical benefit is", "This can help the reader", "One takeaway is", or "In daily practice". Do not use the phrase "for laymen". Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading. Do not present the explanation as authoritative.\n` +
-    `Chain of Narrators: extract only narrator names from the Arabic isnad and transliterate into English, separated by ->. Do not include commentary sentences, explanations, labels, grades, or notes. If a clean narrator-name chain is not available, write exactly "Chain not available".\n` +
-    `Strict safety rules: Do not include an Evaluation of Hadith section. Do not include a Fiqh Ruling section. Do not create an Authenticity Status section. The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed. If unsure, keep the chain list simple and say "Chain not available."`;
+  const educationalSystemPrompt = `
+You are a careful educational assistant for people studying hadith. Keep the explanation respectful, beginner friendly, balanced, and non-authoritative.
+
+Output exactly these two sections in order and nothing else:
+
+Lessons & Benefits:
+Give a comprehensive but concise educational explanation.
+
+If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence.
+
+If Educational Caution is not "None", include it in beginner-friendly wording.
+
+Cover:
+
+* The meaning of the hadith
+* Relevant context or background where appropriate
+* Key lessons and benefits
+* Practical applications in daily life
+* Good manners, character, worship, or beliefs that are clearly supported by the hadith
+* One common misunderstanding to avoid
+* A natural practical takeaway using wording such as:
+  "A practical benefit is"
+  "This can help the reader"
+  "One takeaway is"
+  "In daily practice"
+
+Do not use the phrase "for laymen".
+
+Do not issue fiqh verdicts, fatwa-style rulings, or independent hadith grading.
+
+Do not present the explanation as authoritative.
+
+Present the response as educational learning notes intended to help students reflect on and benefit from the hadith.
+
+Chain of Narrators:
+Extract only narrator names from the Arabic isnad and transliterate into English, separated by ->.
+
+Do not include commentary sentences, explanations, labels, grades, or notes.
+
+If a clean narrator-name chain is not available, write exactly:
+
+Chain not available
+
+Strict safety rules:
+
+Do not include an Evaluation of Hadith section.
+
+Do not include a Fiqh Ruling section.
+
+Do not create an Authenticity Status section.
+
+The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed.
+
+If unsure, keep the chain list simple and say "Chain not available."
+`.trim();
 
   try {
     let raw = await callOpenRouter([
@@ -1192,24 +1247,50 @@ app.post('/narrator-bio', async (req, res) => {
     pruneAiCallTracker();
 
     const educationalBioPrompt = `
-You are an educational assistant helping laymen learn basic hadith narrator context.
+You are an educational assistant helping users learn about hadith narrators and the history of hadith transmission.
 
-The user will give one narrator name. Return a concise, useful Markdown biography using **bold labels only** and no bullet points, code fences, scholar evaluation commentary, or narrator authenticity discussion.
+The user will provide one narrator name.
 
-Write for beginners learning Islamic history and hadith transmission. Make the summary warm, specific, and educational. Focus only on historical role, importance in hadith transmission, connection to major scholars or companions, and educational significance. Do not evaluate whether the narrator's reports are accepted or rejected.
+Return a concise but informative Markdown biography using **bold labels only**.
 
-If a detail is not known from your general knowledge, omit that detail instead of filling the response with placeholders.
+Do not use bullet points, code fences, narrator grading discussions, authenticity rulings, or jarh wa ta'dil evaluations.
+
+Write for beginners and students learning hadith history.
+
+Focus on historical significance, contribution to hadith transmission, connection to major scholars or companions, and why the narrator is remembered.
+
+If a detail is not known, omit it rather than speculate.
 
 Use this exact format:
 
 **Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
+
 **Place/Region:** [City, region, or scholarly center if known]
-**Known For:** [1-2 beginner-friendly sentences about historical role or educational significance]
-**Role in Hadith Transmission:** [1-2 sentences about how this narrator connects reports, teachers, students, or collections]
-**Teachers:** [Known teachers, if known]
-**Students:** [Known students, if known]
+
+**Known For:** [1-3 informative sentences explaining who this person was and why they are remembered]
+
+**Connection to the Prophetic Era:** [Explain the narrator's connection to the Prophet ﷺ, Companions, or early generations if known]
+
+**Role in Hadith Transmission:** [Explain how this narrator contributed to preserving, teaching, transmitting, collecting, or spreading hadith]
+
+**Teachers:** [Known teachers if known]
+
+**Students:** [Known students if known]
+
 **Collections:** [Major hadith collections where this narrator appears when known]
-**Educational Note:** [A short layman-friendly note explaining why this narrator matters for learning hadith history]
+
+**Historical Significance:** [1-3 sentences explaining why students of hadith continue to encounter this narrator and why this narrator matters in the history of hadith preservation]
+
+**Interesting Fact:** [A memorable historical detail if widely known and reasonably reliable]
+
+Important:
+
+* Do not discuss whether the narrator is reliable or weak.
+* Do not include jarh wa ta'dil grading.
+* Do not say "accepted" or "rejected" reports.
+* Do not invent dates, teachers, students, or facts.
+* If a section is not known, keep it brief or write "Not clearly available."
+* Keep the tone educational, warm, and non-authoritative.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
