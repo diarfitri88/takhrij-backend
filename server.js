@@ -23,7 +23,7 @@ const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || 'true').toLowerC
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v5';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v6-chain-fallback';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -722,7 +722,6 @@ function sanitizeNarratorBio(rawBio = '') {
     ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
     ['Teachers', sectionValues.get('teachers')],
     ['Students', sectionValues.get('students')],
-    ['Why This Narrator Matters', sectionValues.get('why this narrator matters')],
     ['Interesting Fact', sectionValues.get('interesting fact')]
   ];
 
@@ -742,21 +741,21 @@ function sanitizeNarratorChain(chain = '') {
     .replace(/\*\*/g, '')
     .replace(/\r\n/g, '\n')
     .split(/\n\s*\n/)[0]
-    .split(/(?:Lessons\s*&\s*Benefits|Commentary|Explanation|Educational Commentary|Meaning|Evaluation of Hadith|Fiqh Ruling)\s*[:ï¼š-]?/i)[0]
+    .split(/(?:Lessons\s*&\s*Benefits|Commentary|Explanation|Educational Commentary|Meaning|Evaluation of Hadith|Fiqh Ruling)\s*[:\uFF1A-]?/i)[0]
     .trim();
 
   if (!cleaned || /^no chain\.?$/i.test(cleaned) || /^chain not available\.?$/i.test(cleaned)) {
     return 'Chain not available';
   }
 
-  const hasChainDelimiter = /(?:->|â†’|=>|,|;|،)/.test(cleaned);
+  const hasChainDelimiter = /(?:->|\u2192|=>|,|;|\u060C)/.test(cleaned);
   if (!hasChainDelimiter) {
     return 'Chain not available';
   }
 
   const sentencePattern = /[.!?]|\b(?:hadith|narration|report|meaning|lesson|benefit|reader|practice|authenticity|source|reward|virtue|specific|claim)\b/i;
   const names = cleaned
-    .split(/\s*(?:->|â†’|=>|,|;|،)\s*/)
+    .split(/\s*(?:->|\u2192|=>|,|;|\u060C)\s*/)
     .map(name => name.replace(/^\d+\.\s*/, '').trim())
     .filter(Boolean);
 
@@ -771,6 +770,100 @@ function sanitizeNarratorChain(chain = '') {
   return names.join(' -> ');
 }
 
+const ARABIC_TRANSMISSION_CUE_PATTERN = '(?:\\u062D\\u062F\\u062B\\u0646\\u0627|\\u062D\\u062F\\u062B\\u0646\\u064A|\\u0623\\u062E\\u0628\\u0631\\u0646\\u0627|\\u0623\\u062E\\u0628\\u0631\\u0646\\u064A|\\u0623\\u0646\\u0628\\u0623\\u0646\\u0627|\\u0639\\u0646|\\u0633\\u0645\\u0639\\u062A|\\u0633\\u0645\\u0639)';
+const ARABIC_TRANSMISSION_CUE_REGEX = new RegExp(ARABIC_TRANSMISSION_CUE_PATTERN, 'g');
+const ARABIC_PROPHET_STOP_REGEX = new RegExp('^(?:\\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0644\\u0646\\u0628\\u064A|\\u0627\\u0644\\u0644\\u0647 \\u062A\\u0628\\u0627\\u0631\\u0643|\\u0627\\u0644\\u0644\\u0647 \\u0639\\u0632 \\u0648\\u062C\\u0644)');
+
+function normalizeArabicForChain(text = '') {
+  return String(text || '')
+    .normalize('NFKD')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanArabicNarratorName(name = '') {
+  return normalizeArabicForChain(name)
+    .replace(/[\u060C,\u061B;.:-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\u062D\s+\u0648\s+/, '')
+    .replace(new RegExp('^' + ARABIC_TRANSMISSION_CUE_PATTERN + '\\s+'), '')
+    .replace(/\b(?:\u0631\u0636\u064A \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u0636\u0649 \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u062D\u0645\u0647 \u0627\u0644\u0644\u0647|\u0635\u0644\u0649 \u0627\u0644\u0644\u0647 \u0639\u0644\u064A\u0647 \u0648\u0633\u0644\u0645|\u0639\u0644\u064A\u0647 \u0627\u0644\u0633\u0644\u0627\u0645)\b/g, '')
+    .trim();
+}
+
+function transliterateArabicNarratorName(name = '') {
+  const replacements = [
+    ['\\u0639\\u0628\\u062F \\u0627\\u0644\\u0644\\u0647', 'Abd Allah'], ['\\u0639\\u0628\\u062F \\u0627\\u0644\\u0631\\u062D\\u0645\\u0646', 'Abd al-Rahman'],
+    ['\\u0623\\u0628\\u0648', 'Abu'], ['\\u0623\\u0628\\u064A', 'Abi'], ['\\u0627\\u0628\\u0646', 'ibn'], ['\\u0628\\u0646', 'ibn'], ['\\u0628\\u0646\\u062A', 'bint'],
+    ['\\u0627\\u0644\\u062D\\u0645\\u064A\\u062F\\u064A', 'al-Humaydi'], ['\\u0627\\u0644\\u0632\\u0647\\u0631\\u064A', 'al-Zuhri'], ['\\u0633\\u0641\\u064A\\u0627\\u0646', 'Sufyan'],
+    ['\\u064A\\u062D\\u064A\\u0649', 'Yahya'], ['\\u0648\\u0643\\u064A\\u0639', 'Waki'], ['\\u0645\\u0627\\u0644\\u0643', 'Malik'], ['\\u0623\\u0646\\u0633', 'Anas'],
+    ['\\u0639\\u0645\\u0631', 'Umar'], ['\\u062D\\u0641\\u0635', 'Hafs'], ['\\u0639\\u0627\\u0626\\u0634\\u0629', 'Aishah'], ['\\u0623\\u064A\\u0648\\u0628', 'Ayyub'],
+    ['\\u0645\\u062D\\u0645\\u062F', 'Muhammad'], ['\\u0625\\u0628\\u0631\\u0627\\u0647\\u064A\\u0645', 'Ibrahim'], ['\\u0625\\u0633\\u0645\\u0627\\u0639\\u064A\\u0644', 'Ismail'],
+    ['\\u0645\\u0648\\u0633\\u0649', 'Musa'], ['\\u0647\\u0634\\u0627\\u0645', 'Hisham'], ['\\u0642\\u062A\\u064A\\u0628\\u0629', 'Qutaybah'], ['\\u0625\\u0633\\u062D\\u0627\\u0642', 'Ishaq'],
+    ['\\u0645\\u0639\\u0645\\u0631', 'Mamar'], ['\\u0634\\u0639\\u0628\\u0629', 'Shubah'], ['\\u0627\\u0644\\u0623\\u0639\\u0645\\u0634', 'al-Amash'],
+    ['\\u062C\\u0631\\u064A\\u0631', 'Jarir'], ['\\u0646\\u0627\\u0641\\u0639', 'Nafi'], ['\\u0633\\u0627\\u0644\\u0645', 'Salim'], ['\\u062C\\u0627\\u0628\\u0631', 'Jabir'],
+    ['\\u0647\\u0631\\u064A\\u0631\\u0629', 'Hurayrah'], ['\\u0627\\u0644\\u0632\\u0628\\u064A\\u0631', 'al-Zubayr'], ['\\u0627\\u0644\\u062E\\u0637\\u0627\\u0628', 'al-Khattab']
+  ];
+  let transliterated = cleanArabicNarratorName(name);
+  for (const [pattern, replacement] of replacements) {
+    transliterated = transliterated.replace(new RegExp(pattern, 'g'), replacement);
+  }
+  return transliterated.replace(/\s+/g, ' ').trim();
+}
+
+function extractNarratorChainFromArabic(arabic = '') {
+  const text = normalizeArabicForChain(arabic);
+  ARABIC_TRANSMISSION_CUE_REGEX.lastIndex = 0;
+  if (!ARABIC_TRANSMISSION_CUE_REGEX.test(text)) {
+    return 'Chain not available';
+  }
+
+  ARABIC_TRANSMISSION_CUE_REGEX.lastIndex = 0;
+  const matches = [...text.matchAll(ARABIC_TRANSMISSION_CUE_REGEX)];
+  const names = [];
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const cue = matches[index][0];
+    const start = matches[index].index + cue.length;
+    const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
+    const segment = text.slice(start, end).trim();
+
+    if (!segment) continue;
+    if (ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
+    if (cue === '\u0633\u0645\u0639\u062A' && ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
+
+    const name = cleanArabicNarratorName(segment.split(/(?:\u0623\u0646\s+|\u0623\u0646\u0647\s*|\u064A\u0642\u0648\u0644|\u0639\u0644\u0649 \u0627\u0644\u0645\u0646\u0628\u0631|\u0648\u0647\u0630\u0627 \u062D\u062F\u064A\u062B\u0647|\u064A\u0639\u0646\u064A|\u0642\u0627\u0644|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/)[0]);
+    if (
+      name &&
+      name.length >= 2 &&
+      name.length <= 70 &&
+      !/(?:\u0643\u062A\u0627\u0628|\u0628\u0627\u0628|\u062D\u062F\u064A\u062B|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/.test(name)
+    ) {
+      names.push(transliterateArabicNarratorName(name));
+    }
+  }
+
+  const invalidNamePattern = /(?:\u0627\u0644\u0627\u0633\u0644\u0627\u0645|\u0627\u0644\u0627\u064A\u0645\u0627\u0646|\u0627\u0644\u0627\u062D\u0633\u0627\u0646|\u0627\u0644\u0633\u0627\u0639\u0629|\u0627\u0645\u0627\u0631\u062A\u0647\u0627|\u0628\u0627\u0639\u0644\u0645|\u064A\u0645\u064A\u0646\u0647)/;
+  const uniqueNames = names.filter((name, index, array) => name && !invalidNamePattern.test(name) && array.indexOf(name) === index).slice(0, 20);
+  return uniqueNames.length >= 2 ? uniqueNames.join(' -> ') : 'Chain not available';
+}
+
+function resolveNarratorChain(parsedChain, arabicText = '') {
+  const sanitized = sanitizeNarratorChain(parsedChain);
+  if (sanitized !== 'Chain not available') return sanitized;
+  return extractNarratorChainFromArabic(arabicText);
+}
+
+function logChainExtraction({ reference, arabicText, aiChain, finalChain }) {
+  if (String(process.env.DEBUG_CHAIN_EXTRACTION || '').toLowerCase() !== 'true') return;
+  console.log('[chain-debug]', {
+    reference,
+    arabicPreview: String(arabicText || '').slice(0, 300),
+    aiChain: String(aiChain || '').slice(0, 300),
+    finalChain
+  });
+}
 function parseAiCommentary(raw = '') {
   const cleaned = String(raw || '').replace(/```[\s\S]*?```/g, '').trim();
   const commentaryHeading = '(?:Lessons\\s*&\\s*Benefits|Commentary|Explanation|Educational Commentary|Meaning)';
@@ -783,7 +876,8 @@ function parseAiCommentary(raw = '') {
 
   const commentaryMatch = cleaned.match(commentaryRegex);
   const chainMatch = cleaned.match(chainRegex);
-  const chain = sanitizeNarratorChain(chainMatch?.[1] || '');
+  const rawChain = chainMatch?.[1] || '';
+  const chain = sanitizeNarratorChain(rawChain);
 
   let commentary = commentaryMatch?.[1]?.trim() || '';
   if (!commentary) {
@@ -798,7 +892,8 @@ function parseAiCommentary(raw = '') {
 
   return {
     commentary: commentary || 'Commentary was not available for this hadith. Please refer to qualified scholars for detailed explanation.',
-    chain
+    chain,
+    rawChain
   };
 }
 
@@ -1322,6 +1417,8 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
     const parsedCommentary = parseAiCommentary(raw);
+    const finalChain = resolveNarratorChain(parsedCommentary.rawChain, arabicFull);
+    logChainExtraction({ reference, arabicText: arabicFull, aiChain: parsedCommentary.rawChain, finalChain });
     const guardedCommentary = polishCommentaryLanguage(applyWeakReportCommentaryGuard(
       removeUnneededFurtherStudy(parsedCommentary.commentary, authenticity.status),
       authenticity.status
@@ -1329,7 +1426,7 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
 
     const payload = {
       commentary: guardedCommentary,
-      chain: parsedCommentary.chain,
+      chain: finalChain,
       evaluation: '',
       authenticityStatus: authenticity.status,
       authenticitySource: authenticity.source,
@@ -1392,9 +1489,6 @@ Students:
 
 [Known students if known. If not known, write "Not clearly available."]
 
-Why This Narrator Matters:
-
-[2 to 3 beginner-friendly sentences explaining why students of hadith keep encountering this narrator and what role this narrator has in hadith transmission/history]
 
 Interesting Fact:
 
@@ -1454,5 +1548,6 @@ module.exports = {
   extractAuthenticityStatus,
   normalizeArabicForDetection,
   sanitizeNarratorChain,
+  extractNarratorChainFromArabic,
   formatDidYouMeanFallback
 };
