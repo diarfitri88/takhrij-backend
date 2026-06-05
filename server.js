@@ -22,7 +22,7 @@ const MAX_TEXT_FIELD_LENGTH = 4000;
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-short-v2';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-structured-v3';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -655,21 +655,13 @@ function extractAuthenticityStatus(h, collection, sourceOverride = '') {
 function sanitizeNarratorBio(rawBio = '') {
   const forbiddenPattern = /\b(scholarly remarks|jarh|ta['‘’]?dil|grading|grade|graded|authenticity|trustworthy|reliable|unreliable|weak|thiqah|liar|fabricator|majhul|abandoned|criticism|dispute|disputed)\b/i;
   const allowedLabels = [
-    'era/generation',
     'birth/death',
     'place/region',
     'region',
     'teachers',
     'students',
-    'collections',
-    'known for',
-    'role in hadith transmission',
-    'educational note',
-    'connection to the prophetic era',
-    'historical significance',
     'why this narrator matters',
-    'interesting fact',
-    'educational importance'
+    'interesting fact'
   ];
   const sectionValues = new Map();
   let currentLabel = null;
@@ -701,24 +693,17 @@ function sanitizeNarratorBio(rawBio = '') {
     });
 
   const isPlaceholder = value => /^(not listed|not specified|unknown|unclear|n\/a|none)\b/i.test(String(value).trim());
-  const preferredKnownFor = sectionValues.get('known for') || sectionValues.get('educational importance');
   const safeSections = [
-    ['Era/Generation', sectionValues.get('era/generation')],
     ['Birth/Death', sectionValues.get('birth/death')],
     ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
-    ['Known For', preferredKnownFor],
-    ['Connection to the Prophetic Era', sectionValues.get('connection to the prophetic era')],
-    ['Role in Hadith Transmission', sectionValues.get('role in hadith transmission')],
     ['Teachers', sectionValues.get('teachers')],
     ['Students', sectionValues.get('students')],
-    ['Collections', sectionValues.get('collections')],
-    ['Why This Narrator Matters', sectionValues.get('why this narrator matters') || sectionValues.get('historical significance')],
-    ['Interesting Fact', sectionValues.get('interesting fact')],
-    ['Educational Note', sectionValues.get('educational note')]
+    ['Why This Narrator Matters', sectionValues.get('why this narrator matters')],
+    ['Interesting Fact', sectionValues.get('interesting fact')]
   ].filter(([, value]) => value && !isPlaceholder(value));
 
   if (!safeSections.length) {
-    return '**Educational Note:** Beginner-level historical information for this narrator is not available in this brief summary.';
+    return '**Why This Narrator Matters:** Beginner-level historical information for this narrator is not clearly available in this brief summary.';
   }
 
   return safeSections
@@ -828,7 +813,12 @@ function applyWeakReportCommentaryGuard(commentary = '', authenticityStatus = ''
     return cleaned;
   }
 
-  return `${caution}\n\n${cleaned || 'The topic may still be discussed in a general educational way, but specific claims from this narration need stronger evidence before being used for practice.'}`;
+  const followUp = `${caution} A useful follow-up study is to research the source caution for this report and what stronger evidence exists on this topic.`;
+  if (/\*\*Further Study:\*\*/i.test(cleaned)) {
+    return cleaned.replace(/\*\*Further Study:\*\*\s*/i, `**Further Study:** ${followUp} `);
+  }
+
+  return `${cleaned || '**Meaning:** The topic may still be discussed in a general educational way.\n\n**Key Benefit:** Specific claims from this narration need stronger evidence before being used for practice.\n\n**Reflection:** Study the topic carefully with reliable references.\n\n**Misunderstanding to Avoid:** Do not treat this report alone as proof for a specific virtue or fixed reward.'}\n\n**Further Study:** ${followUp}`;
 }
 
 function polishCommentaryLanguage(commentary = '') {
@@ -836,6 +826,16 @@ function polishCommentaryLanguage(commentary = '') {
     .replace(/\bfor laymen\b/gi, 'for readers')
     .replace(/\bpractical benefit for readers\b/gi, 'practical benefit')
     .replace(/\bpractical benefit for the reader\b/gi, 'practical benefit')
+    .trim();
+}
+
+function removeUnneededFurtherStudy(commentary = '', authenticityStatus = '') {
+  if (needsWeakReportCaution(authenticityStatus)) {
+    return commentary;
+  }
+
+  return String(commentary || '')
+    .replace(/\n*\*\*Further Study:\*\*[\s\S]*$/i, '')
     .trim();
 }
 
@@ -1155,24 +1155,42 @@ You are a careful educational assistant for people studying hadith. Keep the exp
 Output exactly these two sections in order and nothing else:
 
 Lessons & Benefits:
-Write clear learning notes of about 120 to 180 words.
+Use exactly this Markdown format:
 
-If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage acting upon specific rewards, virtues, or claims based only on this narration. Explain that the user can study why scholars differed or why the report was weakened, and encourage further research with teachers and reliable hadith references.
+**Meaning:** [1 to 2 short sentences]
 
-If Educational Caution is not "None", include it in beginner-friendly wording.
+**Key Benefit:** [1 to 2 short sentences]
 
-Cover:
+**Reflection:** [1 to 2 short sentences]
 
-* A concise meaning of the hadith
-* The key benefit or lesson
-* A practical reflection for the reader
-* One common misunderstanding to avoid
-* If the narration is weak or has caution, add a short research prompt such as:
-  "A useful follow-up study is to research why scholars graded this report weak and what stronger evidence exists on this topic."
+**Misunderstanding to Avoid:** [1 short sentence]
 
-Avoid over-explaining.
+**Further Study:** [Only include this label if the report is weak, cautioned, disputed, or not authentic. Do not include this section for sahih/authentic reports.]
 
-Avoid long paragraphs.
+Further Study rule:
+
+Only include **Further Study** if:
+
+* Weak Report Commentary Rule is not "None", OR
+* Educational Caution is not "None", OR
+* Source Authenticity Status indicates weak, daif, fabricated, mawdu, munkar, not authentic, disputed, or cautioned.
+
+For sahih/authentic reports:
+
+* Do not include Further Study.
+* Do not mention why scholars weakened it.
+* Do not mention weak grading.
+* Do not say "why scholars differed or why the report was weakened."
+
+For weak or cautioned reports:
+
+* Keep the required weak report caution.
+* Do not encourage acting upon specific rewards, virtues, or claims based only on that narration.
+* Explain that the user can study why scholars differed or why the report was weakened.
+* Encourage further research with teachers and reliable hadith references.
+* Do not independently grade the hadith.
+
+Keep the total Lessons & Benefits section around 120 to 180 words.
 
 Do not use the phrase "for laymen".
 
@@ -1183,7 +1201,7 @@ Do not present the explanation as authoritative.
 Present the response as educational learning notes intended to help students reflect on and benefit from the hadith.
 
 Chain of Narrators:
-Extract only narrator names from the Arabic isnad and transliterate into English, separated by ->.
+Extract only narrator names from the Arabic isnad/matn and transliterate into English, separated by ->.
 
 Do not include commentary sentences, explanations, labels, grades, or notes.
 
@@ -1212,7 +1230,7 @@ If unsure, keep the chain list simple and say "Chain not available."
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
     const parsedCommentary = parseAiCommentary(raw);
     const guardedCommentary = polishCommentaryLanguage(applyWeakReportCommentaryGuard(
-      parsedCommentary.commentary,
+      removeUnneededFurtherStudy(parsedCommentary.commentary, authenticity.status),
       authenticity.status
     ));
 
@@ -1261,41 +1279,30 @@ Write for beginners and students learning hadith history.
 
 Focus on historical significance, contribution to hadith transmission, connection to major scholars or companions, and why the narrator is remembered.
 
-If a detail is not known, omit it rather than speculate.
+If birth/death or interesting fact details are not known, write "Not clearly available." For other unknown details, keep the answer brief and avoid speculation.
 
 Use this exact format:
-
-**Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
 
 **Birth/Death:** [Birth and death dates or approximate period if known. If not known, write "Not clearly available."]
 
 **Place/Region:** [City, region, or scholarly center if known]
 
-**Known For:** [1-2 informative sentences explaining who this person was and why they are remembered]
-
-**Connection to the Prophetic Era:** [Explain connection to the Prophet ﷺ, Companions, or early generations if known]
-
-**Role in Hadith Transmission:** [Explain how this narrator contributed to preserving, teaching, transmitting, collecting, or spreading hadith]
-
 **Teachers:** [Known teachers if known]
 
 **Students:** [Known students if known]
 
-**Collections:** [Major hadith collections where this narrator appears when known]
-
-**Why This Narrator Matters:** [1-2 beginner-friendly sentences explaining why students of hadith keep encountering this narrator]
+**Why This Narrator Matters:** [2 to 3 beginner-friendly sentences explaining why students of hadith keep encountering this narrator and what role this narrator has in hadith transmission/history]
 
 **Interesting Fact:** [One memorable historical detail if widely known and reasonably reliable. If not known, write "Not clearly available."]
 
 Important:
-
 * Do not discuss whether the narrator is reliable or weak.
 * Do not include jarh wa ta'dil grading.
 * Do not say accepted or rejected reports.
 * Do not invent dates, teachers, students, or facts.
 * If birth/death is unknown, say "Not clearly available."
 * Keep tone educational, warm, and non-authoritative.
-* Target length: 150 to 250 words.
+* Target length: 100 to 180 words.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
