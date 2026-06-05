@@ -23,7 +23,7 @@ const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || 'true').toLowerC
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-plain-v4';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v5';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -697,13 +697,13 @@ function sanitizeNarratorBio(rawBio = '') {
     .map(line => line.trim())
     .filter(Boolean)
     .forEach(line => {
-      const labelMatch = line.match(/^\*\*([^:*]+):\*\*/);
+      const labelMatch = line.match(/^(?:\*\*)?([^:*]+):(?:\*\*)?\s*(.*)$/);
       if (labelMatch) {
         const label = labelMatch[1].trim().toLowerCase();
         currentLabel = allowedLabels.includes(label) ? label : null;
 
         if (currentLabel) {
-          const value = line.replace(/^\*\*[^:*]+:\*\*\s*/, '').trim();
+          const value = labelMatch[2].trim();
           if (value && !forbiddenPattern.test(value)) {
             sectionValues.set(currentLabel, value);
           }
@@ -717,7 +717,6 @@ function sanitizeNarratorBio(rawBio = '') {
       }
     });
 
-  const isPlaceholder = value => /^(not listed|not specified|unknown|unclear|n\/a|none)\b/i.test(String(value).trim());
   const safeSections = [
     ['Birth/Death', sectionValues.get('birth/death')],
     ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
@@ -725,15 +724,11 @@ function sanitizeNarratorBio(rawBio = '') {
     ['Students', sectionValues.get('students')],
     ['Why This Narrator Matters', sectionValues.get('why this narrator matters')],
     ['Interesting Fact', sectionValues.get('interesting fact')]
-  ].filter(([, value]) => value && !isPlaceholder(value));
-
-  if (!safeSections.length) {
-    return '**Why This Narrator Matters:** Beginner-level historical information for this narrator is not clearly available in this brief summary.';
-  }
+  ];
 
   return safeSections
-    .map(([label, value]) => `**${label}:** ${value}`)
-    .join('\n');
+    .map(([label, value]) => `${label}:\n\n${value || 'Not clearly available.'}`)
+    .join('\n\n');
 }
 
 function stripSectionHeading(text = '', headingPattern) {
@@ -840,18 +835,38 @@ function applyWeakReportCommentaryGuard(commentary = '', authenticityStatus = ''
 
   const followUp = `${caution} A useful follow-up study is to research the source caution for this report and what stronger evidence exists on this topic.`;
   if (/(?:\*\*)?Further Study:(?:\*\*)?/i.test(cleaned)) {
-    return cleaned.replace(/(?:\*\*)?Further Study:(?:\*\*)?\s*/i, `Further Study: ${followUp} `);
+    return cleaned.replace(/(?:\*\*)?Further Study:(?:\*\*)?\s*/i, `Further Study:\n\n${followUp} `);
   }
 
-  return `${cleaned || 'Meaning: The topic may still be discussed in a general educational way.\n\nKey Benefit: Specific claims from this narration need stronger evidence before being used for practice.\n\nReflection: Study the topic carefully with reliable references.\n\nMisunderstanding to Avoid: Do not treat this report alone as proof for a specific virtue or fixed reward.'}\n\nFurther Study: ${followUp}`;
+  return `${cleaned || 'Meaning:\n\nThe topic may still be discussed in a general educational way.\n\nKey Benefit:\n\nSpecific claims from this narration need stronger evidence before being used for practice.\n\nReflection:\n\nStudy the topic carefully with reliable references.\n\nMisunderstanding to Avoid:\n\nDo not treat this report alone as proof for a specific virtue or fixed reward.'}\n\nFurther Study:\n\n${followUp}`;
 }
 
 function polishCommentaryLanguage(commentary = '') {
-  return String(commentary || '')
+  return formatLessonsAndBenefitsSpacing(String(commentary || '')
     .replace(/\*\*(Meaning|Key Benefit|Reflection|Misunderstanding to Avoid|Further Study):\*\*/gi, '$1:')
     .replace(/\bfor laymen\b/gi, 'for readers')
     .replace(/\bpractical benefit for readers\b/gi, 'practical benefit')
     .replace(/\bpractical benefit for the reader\b/gi, 'practical benefit')
+    .trim());
+}
+
+function formatLessonsAndBenefitsSpacing(commentary = '') {
+  const labels = [
+    'Meaning',
+    'Key Benefit',
+    'Reflection',
+    'Misunderstanding to Avoid',
+    'Further Study'
+  ];
+
+  let formatted = String(commentary || '').replace(/\r\n/g, '\n');
+  labels.forEach(label => {
+    const pattern = new RegExp(`\\n*${label}:\\s*`, 'gi');
+    formatted = formatted.replace(pattern, `\n\n${label}:\n\n`);
+  });
+
+  return formatted
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -1222,13 +1237,23 @@ Use exactly this plain-text format. Do not use Markdown, asterisks, bullets, or 
 
 Meaning: [1 to 2 short sentences]
 
+Write the label on its own line, then a blank line, then the content.
+
 Key Benefit: [1 to 2 short sentences]
+
+Write the label on its own line, then a blank line, then the content.
 
 Reflection: [1 to 2 short sentences]
 
+Write the label on its own line, then a blank line, then the content.
+
 Misunderstanding to Avoid: [1 short sentence]
 
+Write the label on its own line, then a blank line, then the content.
+
 Further Study: [Only include this label if the report is weak, cautioned, disputed, or not authentic. Do not include this section for sahih/authentic reports.]
+
+If included, write the label on its own line, then a blank line, then the content.
 
 Further Study rule:
 
@@ -1339,9 +1364,9 @@ You are an educational assistant helping users learn about hadith narrators and 
 
 The user will provide one narrator name.
 
-Return a concise but informative Markdown biography using **bold labels only**.
+Return a concise but informative plain-text biography using these labels exactly.
 
-Do not use bullet points, code fences, narrator grading discussions, authenticity rulings, or jarh wa ta'dil evaluations.
+Do not use Markdown asterisks, bullet points, code fences, narrator grading discussions, authenticity rulings, or jarh wa ta'dil evaluations.
 
 Write for beginners and students learning hadith history.
 
@@ -1351,17 +1376,29 @@ If birth/death or interesting fact details are not known, write "Not clearly ava
 
 Use this exact format:
 
-**Birth/Death:** [Birth and death dates or approximate period if known. If not known, write "Not clearly available."]
+Birth/Death:
 
-**Place/Region:** [City, region, or scholarly center if known]
+[Birth and death dates or approximate period if known. If not known, write "Not clearly available."]
 
-**Teachers:** [Known teachers if known]
+Place/Region:
 
-**Students:** [Known students if known]
+[City, region, or scholarly center if known. If not known, write "Not clearly available."]
 
-**Why This Narrator Matters:** [2 to 3 beginner-friendly sentences explaining why students of hadith keep encountering this narrator and what role this narrator has in hadith transmission/history]
+Teachers:
 
-**Interesting Fact:** [One memorable historical detail if widely known and reasonably reliable. If not known, write "Not clearly available."]
+[Known teachers if known. If not known, write "Not clearly available."]
+
+Students:
+
+[Known students if known. If not known, write "Not clearly available."]
+
+Why This Narrator Matters:
+
+[2 to 3 beginner-friendly sentences explaining why students of hadith keep encountering this narrator and what role this narrator has in hadith transmission/history]
+
+Interesting Fact:
+
+[One memorable historical detail if widely known and reasonably reliable. If not known, write "Not clearly available."]
 
 Important:
 * Do not discuss whether the narrator is reliable or weak.
