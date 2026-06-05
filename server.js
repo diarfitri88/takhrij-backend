@@ -23,7 +23,7 @@ const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || 'true').toLowerC
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-structured-v3';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-plain-v4';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -839,15 +839,16 @@ function applyWeakReportCommentaryGuard(commentary = '', authenticityStatus = ''
   }
 
   const followUp = `${caution} A useful follow-up study is to research the source caution for this report and what stronger evidence exists on this topic.`;
-  if (/\*\*Further Study:\*\*/i.test(cleaned)) {
-    return cleaned.replace(/\*\*Further Study:\*\*\s*/i, `**Further Study:** ${followUp} `);
+  if (/(?:\*\*)?Further Study:(?:\*\*)?/i.test(cleaned)) {
+    return cleaned.replace(/(?:\*\*)?Further Study:(?:\*\*)?\s*/i, `Further Study: ${followUp} `);
   }
 
-  return `${cleaned || '**Meaning:** The topic may still be discussed in a general educational way.\n\n**Key Benefit:** Specific claims from this narration need stronger evidence before being used for practice.\n\n**Reflection:** Study the topic carefully with reliable references.\n\n**Misunderstanding to Avoid:** Do not treat this report alone as proof for a specific virtue or fixed reward.'}\n\n**Further Study:** ${followUp}`;
+  return `${cleaned || 'Meaning: The topic may still be discussed in a general educational way.\n\nKey Benefit: Specific claims from this narration need stronger evidence before being used for practice.\n\nReflection: Study the topic carefully with reliable references.\n\nMisunderstanding to Avoid: Do not treat this report alone as proof for a specific virtue or fixed reward.'}\n\nFurther Study: ${followUp}`;
 }
 
 function polishCommentaryLanguage(commentary = '') {
   return String(commentary || '')
+    .replace(/\*\*(Meaning|Key Benefit|Reflection|Misunderstanding to Avoid|Further Study):\*\*/gi, '$1:')
     .replace(/\bfor laymen\b/gi, 'for readers')
     .replace(/\bpractical benefit for readers\b/gi, 'practical benefit')
     .replace(/\bpractical benefit for the reader\b/gi, 'practical benefit')
@@ -860,7 +861,8 @@ function removeUnneededFurtherStudy(commentary = '', authenticityStatus = '') {
   }
 
   return String(commentary || '')
-    .replace(/\n*\*\*Further Study:\*\*[\s\S]*$/i, '')
+    .replace(/\n*(?:\*\*)?Further Study:(?:\*\*)?[\s\S]*$/i, '')
+    .replace(/\*\*(Meaning|Key Benefit|Reflection|Misunderstanding to Avoid|Further Study):\*\*/gi, '$1:')
     .trim();
 }
 
@@ -1216,21 +1218,21 @@ You are a careful educational assistant for people studying hadith. Keep the exp
 Output exactly these two sections in order and nothing else:
 
 Lessons & Benefits:
-Use exactly this Markdown format:
+Use exactly this plain-text format. Do not use Markdown, asterisks, bullets, or bold formatting:
 
-**Meaning:** [1 to 2 short sentences]
+Meaning: [1 to 2 short sentences]
 
-**Key Benefit:** [1 to 2 short sentences]
+Key Benefit: [1 to 2 short sentences]
 
-**Reflection:** [1 to 2 short sentences]
+Reflection: [1 to 2 short sentences]
 
-**Misunderstanding to Avoid:** [1 short sentence]
+Misunderstanding to Avoid: [1 short sentence]
 
-**Further Study:** [Only include this label if the report is weak, cautioned, disputed, or not authentic. Do not include this section for sahih/authentic reports.]
+Further Study: [Only include this label if the report is weak, cautioned, disputed, or not authentic. Do not include this section for sahih/authentic reports.]
 
 Further Study rule:
 
-Only include **Further Study** if:
+Only include Further Study if:
 
 * Weak Report Commentary Rule is not "None", OR
 * Educational Caution is not "None", OR
@@ -1246,6 +1248,7 @@ For sahih/authentic reports:
 For weak or cautioned reports:
 
 * Keep the required weak report caution.
+* Do not affirm the weak or cautioned claim as established.
 * Do not encourage acting upon specific rewards, virtues, or claims based only on that narration.
 * Explain that the user can study why scholars differed or why the report was weakened.
 * Encourage further research with teachers and reliable hadith references.
@@ -1262,11 +1265,15 @@ Do not present the explanation as authoritative.
 Present the response as educational learning notes intended to help students reflect on and benefit from the hadith.
 
 Chain of Narrators:
-Extract only narrator names from the Arabic isnad/matn and transliterate into English, separated by ->.
+Extract narrator names from the Arabic isnad/matn and transliterate them into English, separated by ->.
+
+Arabic isnad often begins with words such as حدثنا, أخبرنا, أنبأنا, قال, عن, سمعت, or ذكر. Use those transmission cues to identify the narrator sequence before the main matn.
 
 Do not include commentary sentences, explanations, labels, grades, or notes.
 
-If a clean narrator-name chain is not available, write exactly:
+Only write Chain not available if there is no identifiable Arabic isnad or narrator sequence.
+
+If no identifiable isnad is available, write exactly:
 
 Chain not available
 
@@ -1280,7 +1287,7 @@ Do not create an Authenticity Status section.
 
 The Source Authenticity Status is reference context only and must not be changed, expanded, or independently assessed.
 
-If unsure, keep the chain list simple and say "Chain not available."
+If unsure, keep the chain list simple with only names found in the Arabic text.
 `.trim();
 
   try {
