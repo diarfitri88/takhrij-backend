@@ -22,7 +22,7 @@ const MAX_TEXT_FIELD_LENGTH = 4000;
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-v1';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-short-v2';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -656,6 +656,7 @@ function sanitizeNarratorBio(rawBio = '') {
   const forbiddenPattern = /\b(scholarly remarks|jarh|ta['‘’]?dil|grading|grade|graded|authenticity|trustworthy|reliable|unreliable|weak|thiqah|liar|fabricator|majhul|abandoned|criticism|dispute|disputed)\b/i;
   const allowedLabels = [
     'era/generation',
+    'birth/death',
     'place/region',
     'region',
     'teachers',
@@ -666,6 +667,7 @@ function sanitizeNarratorBio(rawBio = '') {
     'educational note',
     'connection to the prophetic era',
     'historical significance',
+    'why this narrator matters',
     'interesting fact',
     'educational importance'
   ];
@@ -702,6 +704,7 @@ function sanitizeNarratorBio(rawBio = '') {
   const preferredKnownFor = sectionValues.get('known for') || sectionValues.get('educational importance');
   const safeSections = [
     ['Era/Generation', sectionValues.get('era/generation')],
+    ['Birth/Death', sectionValues.get('birth/death')],
     ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
     ['Known For', preferredKnownFor],
     ['Connection to the Prophetic Era', sectionValues.get('connection to the prophetic era')],
@@ -709,7 +712,7 @@ function sanitizeNarratorBio(rawBio = '') {
     ['Teachers', sectionValues.get('teachers')],
     ['Students', sectionValues.get('students')],
     ['Collections', sectionValues.get('collections')],
-    ['Historical Significance', sectionValues.get('historical significance')],
+    ['Why This Narrator Matters', sectionValues.get('why this narrator matters') || sectionValues.get('historical significance')],
     ['Interesting Fact', sectionValues.get('interesting fact')],
     ['Educational Note', sectionValues.get('educational note')]
   ].filter(([, value]) => value && !isPlaceholder(value));
@@ -1152,25 +1155,24 @@ You are a careful educational assistant for people studying hadith. Keep the exp
 Output exactly these two sections in order and nothing else:
 
 Lessons & Benefits:
-Give a comprehensive but concise educational explanation.
+Write clear learning notes of about 120 to 180 words.
 
-If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage practice, specific rewards, or virtues based on this narration. For weak or cautioned reports, discuss the topic generally and clearly state that specific claims need stronger evidence.
+If Weak Report Commentary Rule is not "None", start with that exact caution and do not encourage acting upon specific rewards, virtues, or claims based only on this narration. Explain that the user can study why scholars differed or why the report was weakened, and encourage further research with teachers and reliable hadith references.
 
 If Educational Caution is not "None", include it in beginner-friendly wording.
 
 Cover:
 
-* The meaning of the hadith
-* Relevant context or background where appropriate
-* Key lessons and benefits
-* Practical applications in daily life
-* Good manners, character, worship, or beliefs that are clearly supported by the hadith
+* A concise meaning of the hadith
+* The key benefit or lesson
+* A practical reflection for the reader
 * One common misunderstanding to avoid
-* A natural practical takeaway using wording such as:
-  "A practical benefit is"
-  "This can help the reader"
-  "One takeaway is"
-  "In daily practice"
+* If the narration is weak or has caution, add a short research prompt such as:
+  "A useful follow-up study is to research why scholars graded this report weak and what stronger evidence exists on this topic."
+
+Avoid over-explaining.
+
+Avoid long paragraphs.
 
 Do not use the phrase "for laymen".
 
@@ -1265,11 +1267,13 @@ Use this exact format:
 
 **Era/Generation:** [Sahabi, Tabi'i, Tabi' al-Tabi'in, later scholar, or unclear]
 
+**Birth/Death:** [Birth and death dates or approximate period if known. If not known, write "Not clearly available."]
+
 **Place/Region:** [City, region, or scholarly center if known]
 
-**Known For:** [1-3 informative sentences explaining who this person was and why they are remembered]
+**Known For:** [1-2 informative sentences explaining who this person was and why they are remembered]
 
-**Connection to the Prophetic Era:** [Explain the narrator's connection to the Prophet ﷺ, Companions, or early generations if known]
+**Connection to the Prophetic Era:** [Explain connection to the Prophet ﷺ, Companions, or early generations if known]
 
 **Role in Hadith Transmission:** [Explain how this narrator contributed to preserving, teaching, transmitting, collecting, or spreading hadith]
 
@@ -1279,18 +1283,19 @@ Use this exact format:
 
 **Collections:** [Major hadith collections where this narrator appears when known]
 
-**Historical Significance:** [1-3 sentences explaining why students of hadith continue to encounter this narrator and why this narrator matters in the history of hadith preservation]
+**Why This Narrator Matters:** [1-2 beginner-friendly sentences explaining why students of hadith keep encountering this narrator]
 
-**Interesting Fact:** [A memorable historical detail if widely known and reasonably reliable]
+**Interesting Fact:** [One memorable historical detail if widely known and reasonably reliable. If not known, write "Not clearly available."]
 
 Important:
 
 * Do not discuss whether the narrator is reliable or weak.
 * Do not include jarh wa ta'dil grading.
-* Do not say "accepted" or "rejected" reports.
+* Do not say accepted or rejected reports.
 * Do not invent dates, teachers, students, or facts.
-* If a section is not known, keep it brief or write "Not clearly available."
-* Keep the tone educational, warm, and non-authoritative.
+* If birth/death is unknown, say "Not clearly available."
+* Keep tone educational, warm, and non-authoritative.
+* Target length: 150 to 250 words.
     `.trim();
 
     // 2) Send the narrator’s name as the user message
