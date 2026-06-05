@@ -17,7 +17,7 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
 const OPENROUTER_TIMEOUT_MS = Number(process.env.OPENROUTER_TIMEOUT_MS) || 30000;
 const MAX_QUERY_LENGTH = 300;
 const MAX_TEXT_FIELD_LENGTH = 4000;
-const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || '').toLowerCase() === 'true';
+const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || 'true').toLowerCase() !== 'false';
 
 // ─── 0) CACHE FOR COMMENTARY ───────────────────────────────────────────────────
 const commentaryCache = new Map();
