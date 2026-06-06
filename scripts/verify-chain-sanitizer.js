@@ -9,6 +9,13 @@ if (valid !== 'Yahya -> Waki -> Sufyan -> Ayyub') {
   throw new Error(`Expected clean narrator chain, got "${valid}"`);
 }
 
+const normalized = sanitizeNarratorChain('Abu Huraira -> Al Zuhri -> Al Agharr');
+console.log(`Normalized chain: ${normalized}`);
+
+if (normalized !== 'Abu Hurairah -> al-Zuhri -> al-Agharr') {
+  throw new Error(`Expected common narrator variants to be normalized, got "${normalized}"`);
+}
+
 const invalid = sanitizeNarratorChain('This hadith reminds the reader to value the Quran and daily practice.');
 console.log(`Invalid chain fallback: ${invalid}`);
 

@@ -736,6 +736,31 @@ function stripSectionHeading(text = '', headingPattern) {
     .trim();
 }
 
+function normalizeCommonNarratorTransliteration(name = '') {
+  return String(name || '')
+    .replace(/\bAbu\s+Hur(?:ai|ei|ay)ra(?:h)?\b/gi, 'Abu Hurairah')
+    .replace(/\bAbu\s+Hureira(?:h)?\b/gi, 'Abu Hurairah')
+    .replace(/\bAbu\s+Huryra(?:h)?\b/gi, 'Abu Hurairah')
+    .replace(/\bAl\s+Zuhri\b/gi, 'al-Zuhri')
+    .replace(/\bAz\s+Zuhri\b/gi, 'al-Zuhri')
+    .replace(/\bAl-Zuhri\b/g, 'al-Zuhri')
+    .replace(/\bAl\s+Agharr\b/gi, 'al-Agharr')
+    .replace(/\bAl-Agharr\b/g, 'al-Agharr')
+    .replace(/\bAl\s+Ansari\b/gi, 'al-Ansari')
+    .replace(/\bAl-Ansari\b/g, 'al-Ansari')
+    .replace(/\bAl\s+Taymi\b/gi, 'al-Taymi')
+    .replace(/\bAl-Taymi\b/g, 'al-Taymi')
+    .replace(/\bAl\s+Laythi\b/gi, 'al-Laythi')
+    .replace(/\bAl-Laythi\b/g, 'al-Laythi')
+    .replace(/\bAl\s+Shabi\b/gi, 'al-Shabi')
+    .replace(/\bAl-Shabi\b/g, 'al-Shabi')
+    .replace(/\bAl\s+Khattab\b/gi, 'al-Khattab')
+    .replace(/\bAl-Khattab\b/g, 'al-Khattab')
+    .replace(/\bAisha\b/gi, 'Aishah')
+    .replace(/\bMuaz\b/gi, 'Muadh')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 function sanitizeNarratorChain(chain = '') {
   const cleaned = String(chain || '')
     .replace(/\*\*/g, '')
@@ -757,6 +782,7 @@ function sanitizeNarratorChain(chain = '') {
   const names = cleaned
     .split(/\s*(?:->|\u2192|=>|,|;|\u060C)\s*/)
     .map(name => name.replace(/^\d+\.\s*/, '').trim())
+    .map(normalizeCommonNarratorTransliteration)
     .filter(Boolean);
 
   if (
@@ -882,7 +908,7 @@ function transliterateArabicNarratorName(name = '') {
   if (hasArabicScript(transliterated)) {
     transliterated = transliterateArabicLetters(transliterated);
   }
-  return polishTransliteratedNarratorName(transliterated.replace(/\s+/g, ' ').trim());
+  return normalizeCommonNarratorTransliteration(polishTransliteratedNarratorName(transliterated.replace(/\s+/g, ' ').trim()));
 }
 
 function extractNarratorChainFromArabic(arabic = '') {
