@@ -762,7 +762,7 @@ function sanitizeNarratorChain(chain = '') {
   if (
     names.length < 2 ||
     names.length > 20 ||
-    names.some(name => name.length > 55 || sentencePattern.test(name) || /\s{2,}/.test(name))
+    names.some(name => name.length > 55 || sentencePattern.test(name) || /[\u0600-\u06FF]/.test(name) || /\s{2,}/.test(name))
   ) {
     return 'Chain not available';
   }
@@ -770,7 +770,7 @@ function sanitizeNarratorChain(chain = '') {
   return names.join(' -> ');
 }
 
-const ARABIC_TRANSMISSION_CUE_PATTERN = '(?:\\u062D\\u062F\\u062B\\u0646\\u0627|\\u062D\\u062F\\u062B\\u0646\\u064A|\\u0623\\u062E\\u0628\\u0631\\u0646\\u0627|\\u0623\\u062E\\u0628\\u0631\\u0646\\u064A|\\u0623\\u0646\\u0628\\u0623\\u0646\\u0627|\\u0639\\u0646|\\u0633\\u0645\\u0639\\u062A|\\u0633\\u0645\\u0639)';
+const ARABIC_TRANSMISSION_CUE_PATTERN = '(?:\\u062D\\u062F\\u062B\\u0646\\u0627|\\u062D\\u062F\\u062B\\u0646\\u064A|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u0627|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u064A|[\\u0623\\u0627]\\u0646\\u0628[\\u0623\\u0627]\\u0646\\u0627|\\u0639\\u0646(?=\\s)|\\u0633\\u0645\\u0639\\u062A|\\u0633\\u0645\\u0639)';
 const ARABIC_TRANSMISSION_CUE_REGEX = new RegExp(ARABIC_TRANSMISSION_CUE_PATTERN, 'g');
 const ARABIC_PROPHET_STOP_REGEX = new RegExp('^(?:\\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0644\\u0646\\u0628\\u064A|\\u0627\\u0644\\u0644\\u0647 \\u062A\\u0628\\u0627\\u0631\\u0643|\\u0627\\u0644\\u0644\\u0647 \\u0639\\u0632 \\u0648\\u062C\\u0644)');
 
@@ -787,11 +787,81 @@ function cleanArabicNarratorName(name = '') {
     .replace(/[\u060C,\u061B;.:-]/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^\u062D\s+\u0648\s+/, '')
+    .replace(/(?:^|\s)\u062D(?:\s+\u0648)?(?:\s|$)/g, ' ')
     .replace(new RegExp('^' + ARABIC_TRANSMISSION_CUE_PATTERN + '\\s+'), '')
-    .replace(/\b(?:\u0631\u0636\u064A \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u0636\u0649 \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u062D\u0645\u0647 \u0627\u0644\u0644\u0647|\u0635\u0644\u0649 \u0627\u0644\u0644\u0647 \u0639\u0644\u064A\u0647 \u0648\u0633\u0644\u0645|\u0639\u0644\u064A\u0647 \u0627\u0644\u0633\u0644\u0627\u0645)\b/g, '')
+    .replace(/\u0645\u0646 \u0648\u0644\u062F[\s\S]*$/g, '')
+    .replace(/(?:\u0631\u0636\u064A \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u0636\u0649 \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u062D\u0645\u0647 \u0627\u0644\u0644\u0647|\u0635\u0644\u0649 \u0627\u0644\u0644\u0647 \u0639\u0644\u064A\u0647 \u0648\u0633\u0644\u0645|\u0639\u0644\u064A\u0647 \u0627\u0644\u0633\u0644\u0627\u0645)/g, '')
     .trim();
 }
 
+function transliterateArabicLetters(text = '') {
+  const map = {
+    '\u0621': '', '\u0622': 'a', '\u0623': 'a', '\u0624': 'u', '\u0625': 'i', '\u0626': 'i', '\u0627': 'a',
+    '\u0628': 'b', '\u0629': 'ah', '\u062A': 't', '\u062B': 'th', '\u062C': 'j', '\u062D': 'h', '\u062E': 'kh',
+    '\u062F': 'd', '\u0630': 'dh', '\u0631': 'r', '\u0632': 'z', '\u0633': 's', '\u0634': 'sh', '\u0635': 's',
+    '\u0636': 'd', '\u0637': 't', '\u0638': 'z', '\u0639': '', '\u063A': 'gh', '\u0641': 'f', '\u0642': 'q',
+    '\u0643': 'k', '\u0644': 'l', '\u0645': 'm', '\u0646': 'n', '\u0647': 'h', '\u0648': 'w', '\u0649': 'a',
+    '\u064A': 'y', '\u0671': 'a', '\u067E': 'p', '\u0686': 'ch', '\u06A9': 'k', '\u06AF': 'g', '\u06CC': 'y'
+  };
+  return String(text || '')
+    .split('')
+    .map(char => map[char] ?? char)
+    .join('')
+    .replace(/\b(al)\s+/gi, 'al-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasArabicScript(text = '') {
+  return /[\u0600-\u06FF]/.test(String(text || ''));
+}
+
+function polishTransliteratedNarratorName(name = '') {
+  const smallWords = new Set(['ibn', 'bin', 'bint', 'al']);
+  return String(name || '')
+    .replace(/\bAbd Allah\b/g, 'Abdullah')
+    .replace(/\bAbw\b/gi, 'Abu')
+    .replace(/\bKhythmah\b/gi, 'Khaythamah')
+    .replace(/\bZhyr\b/gi, 'Zuhayr')
+    .replace(/\bHrb\b/gi, 'Harb')
+    .replace(/\bKhms\b/gi, 'Kahmas')
+    .replace(/\bBrydah\b/gi, 'Buraydah')
+    .replace(/\bYumar\b/gi, "Ya'mar")
+    .replace(/\bByd Allh\b/gi, 'Ubayd Allah')
+    .replace(/\bMadh\b/gi, 'Muadh')
+    .replace(/\bMsdd\b/gi, 'Musaddad')
+    .replace(/\bSlyman\b/gi, 'Sulayman')
+    .replace(/\bAbyh\b/gi, 'His Father')
+    .replace(/\bZyd\b/gi, 'Zayd')
+    .replace(/\bThabt\b/gi, 'Thabit')
+    .replace(/\bAhmd\b/gi, 'Ahmad')
+    .replace(/\bMny\b/gi, 'Mani')
+    .replace(/\bHshym\b/gi, 'Hushaym')
+    .replace(/\bHsyn\b/gi, 'Husayn')
+    .replace(/\bAlshby\b/gi, 'al-Shabi')
+    .replace(/\bDy\b/gi, 'Adi')
+    .replace(/\bHatm\b/gi, 'Hatim')
+    .replace(/\bSyd\b/gi, 'Said')
+    .replace(/\bAlansary\b/gi, 'al-Ansari')
+    .replace(/\bAbrahym\b/gi, 'Ibrahim')
+    .replace(/\bAltymy\b/gi, 'al-Taymi')
+    .replace(/\bLqmah\b/gi, 'Alqamah')
+    .replace(/\bWqas\b/gi, 'Waqqas')
+    .replace(/\bAllythy\b/gi, 'al-Laythi')
+    .replace(/\bIbn\b/g, 'ibn')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((word, index) => {
+      if (!word) return word;
+      if (word.startsWith('al-')) return 'al-' + word.slice(3, 4).toUpperCase() + word.slice(4).toLowerCase();
+      if (index > 0 && smallWords.has(word.toLowerCase())) return word.toLowerCase();
+      return word.slice(0, 1).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 function transliterateArabicNarratorName(name = '') {
   const replacements = [
     ['\\u0639\\u0628\\u062F \\u0627\\u0644\\u0644\\u0647', 'Abd Allah'], ['\\u0639\\u0628\\u062F \\u0627\\u0644\\u0631\\u062D\\u0645\\u0646', 'Abd al-Rahman'],
@@ -809,7 +879,10 @@ function transliterateArabicNarratorName(name = '') {
   for (const [pattern, replacement] of replacements) {
     transliterated = transliterated.replace(new RegExp(pattern, 'g'), replacement);
   }
-  return transliterated.replace(/\s+/g, ' ').trim();
+  if (hasArabicScript(transliterated)) {
+    transliterated = transliterateArabicLetters(transliterated);
+  }
+  return polishTransliteratedNarratorName(transliterated.replace(/\s+/g, ' ').trim());
 }
 
 function extractNarratorChainFromArabic(arabic = '') {
@@ -825,6 +898,9 @@ function extractNarratorChainFromArabic(arabic = '') {
 
   for (let index = 0; index < matches.length; index += 1) {
     const cue = matches[index][0];
+    const routePrefix = text.slice(Math.max(0, matches[index].index - 6), matches[index].index);
+    if (index > 0 && names.length >= 2 && /\u062D\s+\u0648\s*$/.test(routePrefix)) break;
+
     const start = matches[index].index + cue.length;
     const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
     const segment = text.slice(start, end).trim();
@@ -833,7 +909,7 @@ function extractNarratorChainFromArabic(arabic = '') {
     if (ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
     if (cue === '\u0633\u0645\u0639\u062A' && ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
 
-    const name = cleanArabicNarratorName(segment.split(/(?:\u0623\u0646\s+|\u0623\u0646\u0647\s*|\u064A\u0642\u0648\u0644|\u0639\u0644\u0649 \u0627\u0644\u0645\u0646\u0628\u0631|\u0648\u0647\u0630\u0627 \u062D\u062F\u064A\u062B\u0647|\u064A\u0639\u0646\u064A|\u0642\u0627\u0644|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/)[0]);
+    const name = cleanArabicNarratorName(segment.split(/(?:(?:^|\s)[\u0623\u0627]\u0646\s+|(?:^|\s)[\u0623\u0627]\u0646\u0647\s*|\u064A\u0642\u0648\u0644|\u0639\u0644\u0649 \u0627\u0644\u0645\u0646\u0628\u0631|\u0648\u0647\u0630\u0627 \u062D\u062F\u064A\u062B\u0647|\u064A\u0639\u0646\u064A|\u0642\u0627\u0644|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/)[0]);
     if (
       name &&
       name.length >= 2 &&
@@ -841,6 +917,10 @@ function extractNarratorChainFromArabic(arabic = '') {
       !/(?:\u0643\u062A\u0627\u0628|\u0628\u0627\u0628|\u062D\u062F\u064A\u062B|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/.test(name)
     ) {
       names.push(transliterateArabicNarratorName(name));
+      const afterQal = segment.split(/\u0642\u0627\u0644(?:\u0627)?/)[1] || '';
+      const afterQalMeaningful = afterQal.replace(/[\s:\u060C,.\-]+/g, '');
+      const continuesWithTransmission = new RegExp('^\\s*(?:[:\u060C,.-]\\s*)?' + ARABIC_TRANSMISSION_CUE_PATTERN).test(afterQal);
+      if (names.length >= 2 && afterQalMeaningful && !continuesWithTransmission) break;
     }
   }
 
