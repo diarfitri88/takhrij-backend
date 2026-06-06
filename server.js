@@ -23,7 +23,7 @@ const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || 'true').toLowerC
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v6-chain-fallback';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v7-chain-normalized';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -738,9 +738,35 @@ function stripSectionHeading(text = '', headingPattern) {
 
 function normalizeCommonNarratorTransliteration(name = '') {
   return String(name || '')
+    .replace(/\bAywb\b/gi, 'Ayyub')
+    .replace(/\bAby\s+Qlabah\b/gi, 'Abu Qilabah')
+    .replace(/\bQlabah\b/gi, 'Qilabah')
+    .replace(/\bZhdm\s+Aljrmy\b/gi, 'Zahdam al-Jarmi')
+    .replace(/\bAljrmy\b/gi, 'al-Jarmi')
+    .replace(/\bAlmthna\b/gi, 'al-Muthanna')
+    .replace(/\bBd\s+Alwhab\b/gi, 'Abd al-Wahhab')
+    .replace(/\bAlwhab\b/gi, 'al-Wahhab')
+    .replace(/\bAlthqfy\b/gi, 'al-Thaqafi')
+    .replace(/\bAlmthna\b/gi, 'al-Muthanna')
+    .replace(/\bAns\b/g, 'Anas')
+    .replace(/\bNmyr\b/gi, 'Numayr')
+    .replace(/\bUmarw\b/gi, 'Amr')
+    .replace(/\bThman\b/gi, 'Uthman')
+    .replace(/\bTlhah\b/gi, 'Talhah')
+    .replace(/\bAbuh\b/gi, 'His Father')
+    .replace(/\bMsrhd\b/gi, 'Musarhad')
+    .replace(/\bTa\b/g, 'Ata')
+    .replace(/\bYzyd\b/gi, 'Yazid')
+    .replace(/\bRwayah\b/gi, '')
+    .replace(/\bAby\s+Aywb\b/gi, 'Abu Ayyub')
+    .replace(/\bAby\s+Hurayrah\b/gi, 'Abu Hurairah')
+    .replace(/\bAby\s+Said\b/gi, 'Abu Said')
+    .replace(/\bAby\s+Hashm\b/gi, 'Abu Hashim')
+    .replace(/\bAby\b/gi, 'Abu')
     .replace(/\bAbu\s+Hur(?:ai|ei|ay)ra(?:h)?\b/gi, 'Abu Hurairah')
     .replace(/\bAbu\s+Hureira(?:h)?\b/gi, 'Abu Hurairah')
     .replace(/\bAbu\s+Huryra(?:h)?\b/gi, 'Abu Hurairah')
+    .replace(/\bAbu\s+Hurayrah\b/gi, 'Abu Hurairah')
     .replace(/\bAl\s+Zuhri\b/gi, 'al-Zuhri')
     .replace(/\bAz\s+Zuhri\b/gi, 'al-Zuhri')
     .replace(/\bAl-Zuhri\b/g, 'al-Zuhri')
@@ -756,6 +782,14 @@ function normalizeCommonNarratorTransliteration(name = '') {
     .replace(/\bAl-Shabi\b/g, 'al-Shabi')
     .replace(/\bAl\s+Khattab\b/gi, 'al-Khattab')
     .replace(/\bAl-Khattab\b/g, 'al-Khattab')
+    .replace(/\bAl\s+Jarmi\b/gi, 'al-Jarmi')
+    .replace(/\bAl-Jarmi\b/g, 'al-Jarmi')
+    .replace(/\bAl\s+Muthanna\b/gi, 'al-Muthanna')
+    .replace(/\bAl-Muthanna\b/g, 'al-Muthanna')
+    .replace(/\bAl\s+Wahhab\b/gi, 'al-Wahhab')
+    .replace(/\bAl-Wahhab\b/g, 'al-Wahhab')
+    .replace(/\bAl\s+Thaqafi\b/gi, 'al-Thaqafi')
+    .replace(/\bAl-Thaqafi\b/g, 'al-Thaqafi')
     .replace(/\bAisha\b/gi, 'Aishah')
     .replace(/\bMuaz\b/gi, 'Muadh')
     .replace(/\s+/g, ' ')
@@ -816,6 +850,7 @@ function cleanArabicNarratorName(name = '') {
     .replace(/(?:^|\s)\u062D(?:\s+\u0648)?(?:\s|$)/g, ' ')
     .replace(new RegExp('^' + ARABIC_TRANSMISSION_CUE_PATTERN + '\\s+'), '')
     .replace(/\u0645\u0646 \u0648\u0644\u062F[\s\S]*$/g, '')
+    .replace(/\u0631\u0648\u0627\u064A\u0629/g, '')
     .replace(/(?:\u0631\u0636\u064A \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u0636\u0649 \u0627\u0644\u0644\u0647(?: \u0639\u0646\u0647\u0645\u0627| \u0639\u0646\u0647)?|\u0631\u062D\u0645\u0647 \u0627\u0644\u0644\u0647|\u0635\u0644\u0649 \u0627\u0644\u0644\u0647 \u0639\u0644\u064A\u0647 \u0648\u0633\u0644\u0645|\u0639\u0644\u064A\u0647 \u0627\u0644\u0633\u0644\u0627\u0645)/g, '')
     .trim();
 }
@@ -891,10 +926,15 @@ function polishTransliteratedNarratorName(name = '') {
 function transliterateArabicNarratorName(name = '') {
   const replacements = [
     ['\\u0639\\u0628\\u062F \\u0627\\u0644\\u0644\\u0647', 'Abd Allah'], ['\\u0639\\u0628\\u062F \\u0627\\u0644\\u0631\\u062D\\u0645\\u0646', 'Abd al-Rahman'],
-    ['\\u0623\\u0628\\u0648', 'Abu'], ['\\u0623\\u0628\\u064A', 'Abi'], ['\\u0627\\u0628\\u0646', 'ibn'], ['\\u0628\\u0646', 'ibn'], ['\\u0628\\u0646\\u062A', 'bint'],
+    ['\\u0639\\u0628\\u062F \\u0627\\u0644\\u0648\\u0647\\u0627\\u0628', 'Abd al-Wahhab'], ['\\u0627\\u0644\\u0645\\u062B\\u0646\\u0649', 'al-Muthanna'],
+    ['\\u0627\\u0644\\u062B\\u0642\\u0641\\u064A', 'al-Thaqafi'], ['\\u0627\\u0644\\u062C\\u0631\\u0645\\u064A', 'al-Jarmi'],
+    ['\\u0623\\u0628\\u064A \\u0642\\u0644\\u0627\\u0628\\u0629', 'Abu Qilabah'], ['\\u0627\\u0628\\u064A \\u0642\\u0644\\u0627\\u0628\\u0629', 'Abu Qilabah'],
+    ['\\u0632\\u0647\\u062F\\u0645', 'Zahdam'], ['\\u0623\\u0628\\u0648', 'Abu'], ['\\u0627\\u0628\\u0648', 'Abu'], ['\\u0623\\u0628\\u064A', 'Abu'], ['\\u0627\\u0628\\u064A', 'Abu'],
+    ['\\u0627\\u0628\\u0646', 'ibn'], ['\\u0628\\u0646', 'ibn'], ['\\u0628\\u0646\\u062A', 'bint'],
     ['\\u0627\\u0644\\u062D\\u0645\\u064A\\u062F\\u064A', 'al-Humaydi'], ['\\u0627\\u0644\\u0632\\u0647\\u0631\\u064A', 'al-Zuhri'], ['\\u0633\\u0641\\u064A\\u0627\\u0646', 'Sufyan'],
-    ['\\u064A\\u062D\\u064A\\u0649', 'Yahya'], ['\\u0648\\u0643\\u064A\\u0639', 'Waki'], ['\\u0645\\u0627\\u0644\\u0643', 'Malik'], ['\\u0623\\u0646\\u0633', 'Anas'],
+    ['\\u064A\\u062D\\u064A\\u0649', 'Yahya'], ['\\u0648\\u0643\\u064A\\u0639', 'Waki'], ['\\u0645\\u0627\\u0644\\u0643', 'Malik'], ['\\u0623\\u0646\\u0633', 'Anas'], ['\\u0627\\u0646\\u0633', 'Anas'],
     ['\\u0639\\u0645\\u0631', 'Umar'], ['\\u062D\\u0641\\u0635', 'Hafs'], ['\\u0639\\u0627\\u0626\\u0634\\u0629', 'Aishah'], ['\\u0623\\u064A\\u0648\\u0628', 'Ayyub'],
+    ['\\u0627\\u064A\\u0648\\u0628', 'Ayyub'],
     ['\\u0645\\u062D\\u0645\\u062F', 'Muhammad'], ['\\u0625\\u0628\\u0631\\u0627\\u0647\\u064A\\u0645', 'Ibrahim'], ['\\u0625\\u0633\\u0645\\u0627\\u0639\\u064A\\u0644', 'Ismail'],
     ['\\u0645\\u0648\\u0633\\u0649', 'Musa'], ['\\u0647\\u0634\\u0627\\u0645', 'Hisham'], ['\\u0642\\u062A\\u064A\\u0628\\u0629', 'Qutaybah'], ['\\u0625\\u0633\\u062D\\u0627\\u0642', 'Ishaq'],
     ['\\u0645\\u0639\\u0645\\u0631', 'Mamar'], ['\\u0634\\u0639\\u0628\\u0629', 'Shubah'], ['\\u0627\\u0644\\u0623\\u0639\\u0645\\u0634', 'al-Amash'],
@@ -956,9 +996,20 @@ function extractNarratorChainFromArabic(arabic = '') {
 }
 
 function resolveNarratorChain(parsedChain, arabicText = '') {
+  return resolveNarratorChainResult(parsedChain, arabicText).chain;
+}
+
+function resolveNarratorChainResult(parsedChain, arabicText = '') {
   const sanitized = sanitizeNarratorChain(parsedChain);
-  if (sanitized !== 'Chain not available') return sanitized;
-  return extractNarratorChainFromArabic(arabicText);
+  if (sanitized !== 'Chain not available') {
+    return { chain: sanitized, chainSource: 'gpt' };
+  }
+
+  const fallback = extractNarratorChainFromArabic(arabicText);
+  return {
+    chain: fallback,
+    chainSource: fallback === 'Chain not available' ? 'unavailable' : 'fallback'
+  };
 }
 
 function logChainExtraction({ reference, arabicText, aiChain, finalChain }) {
@@ -1523,7 +1574,8 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
     const parsedCommentary = parseAiCommentary(raw);
-    const finalChain = resolveNarratorChain(parsedCommentary.rawChain, arabicFull);
+    const chainResult = resolveNarratorChainResult(parsedCommentary.rawChain, arabicFull);
+    const finalChain = chainResult.chain;
     logChainExtraction({ reference, arabicText: arabicFull, aiChain: parsedCommentary.rawChain, finalChain });
     const guardedCommentary = polishCommentaryLanguage(applyWeakReportCommentaryGuard(
       removeUnneededFurtherStudy(parsedCommentary.commentary, authenticity.status),
@@ -1533,6 +1585,7 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
     const payload = {
       commentary: guardedCommentary,
       chain: finalChain,
+      chainSource: chainResult.chainSource,
       evaluation: '',
       authenticityStatus: authenticity.status,
       authenticitySource: authenticity.source,

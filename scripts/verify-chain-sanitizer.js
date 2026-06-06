@@ -32,8 +32,11 @@ if (mixed !== 'Chain not available') {
 
 const samples = [
   { file: 'bukhari.json', ref: 'bukhari:1' },
+  { file: 'bukhari.json', ref: 'bukhari:16', mustInclude: ['Ayyub', 'Abu Qilabah', 'Anas'] },
   { file: 'muslim.json', ref: 'muslim:8a' },
+  { file: 'muslim.json', ref: 'muslim:13a' },
   { file: 'abudawud.json', ref: 'abudawud:3660' },
+  { file: 'abudawud.json', ref: 'abudawud:9' },
   { file: 'tirmidhi.json', ref: 'tirmidhi:2970' }
 ];
 
@@ -48,10 +51,17 @@ for (const sample of samples) {
   if (chain === 'Chain not available') {
     throw new Error(`Expected fallback chain for ${sample.ref}`);
   }
-  if (/[\u0600-\u06FF]/.test(chain)) {
-    throw new Error(`Arabic leaked into fallback chain for ${sample.ref}: ${chain}`);
+  if (/[^\x00-\x7F]/.test(chain)) {
+    throw new Error(`Non-ASCII text leaked into fallback chain for ${sample.ref}: ${chain}`);
   }
-  if (/(?:حدثنا|أخبرنا|اخبرنا|قال|عن|سمعت)/.test(chain)) {
+  if (/(?:haddathana|akhbarana|qala|sami'tu)/i.test(chain)) {
     throw new Error(`Transmission cue leaked into fallback chain for ${sample.ref}: ${chain}`);
+  }
+  if (sample.mustInclude) {
+    for (const expected of sample.mustInclude) {
+      if (!chain.includes(expected)) {
+        throw new Error(`Expected ${sample.ref} chain to include "${expected}", got "${chain}"`);
+      }
+    }
   }
 }
