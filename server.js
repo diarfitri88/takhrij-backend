@@ -1212,39 +1212,68 @@ function searchHadiths(query) {
   return results.slice(0, 10).map(r => allHadithsCache[r.item.i]);
 }
 
+function insertTopScored(list, item, limit) {
+  if (!item || item.score <= 0) return;
+
+  let inserted = false;
+  for (let i = 0; i < list.length; i += 1) {
+    if (item.score > list[i].score) {
+      list.splice(i, 0, item);
+      inserted = true;
+      break;
+    }
+  }
+
+  if (!inserted && list.length < limit) {
+    list.push(item);
+  }
+
+  if (list.length > limit) {
+    list.length = limit;
+  }
+}
+
+function getSearchFieldValues(h) {
+  return [
+    getHadithReference(h),
+    h.collectionTitleEnglish || names[h.collection],
+    h.chapterTitleEnglish,
+    h.englishNarrator,
+    h.arabicText,
+    getEnglishText(h)
+  ].filter(Boolean);
+}
+
+function normalizedFieldsInclude(fields, needle) {
+  return fields.some(value => value.includes(needle));
+}
+
 function lightSearchHadiths(query, normalizedQuery, keywords) {
   const referenceMatch = findHadithByReferenceQuery(query);
   if (referenceMatch) return [referenceMatch];
 
   const scored = [];
+  const rawQuery = String(query).trim().toLowerCase();
   for (const h of allHadithsCache) {
     const reference = String(getHadithReference(h) || '').toLowerCase();
-    const collectionTitle = String(h.collectionTitleEnglish || names[h.collection] || '').toLowerCase();
-    const haystack = normalize([
-      reference,
-      collectionTitle,
-      h.chapterTitleEnglish,
-      h.englishNarrator,
-      h.arabicText,
-      getEnglishText(h)
-    ].filter(Boolean).join(' '));
+    const fields = getSearchFieldValues(h).map(normalize);
 
     let score = 0;
-    if (reference === String(query).trim().toLowerCase()) score = 100;
-    else if (reference.startsWith(String(query).trim().toLowerCase())) score = 90;
-    else if (haystack.includes(normalizedQuery)) score = 70;
+    if (reference === rawQuery) score = 100;
+    else if (reference.startsWith(rawQuery)) score = 90;
+    else if (normalizedFieldsInclude(fields, normalizedQuery)) score = 70;
     else {
-      const overlap = keywords.filter(keyword => haystack.includes(keyword)).length;
+      let overlap = 0;
+      for (const keyword of keywords) {
+        if (normalizedFieldsInclude(fields, keyword)) overlap += 1;
+      }
       if (overlap > 0) score = 40 + overlap;
     }
 
-    if (score > 0) scored.push({ h, score });
+    insertTopScored(scored, { h, score }, 10);
   }
 
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
-    .map(item => item.h);
+  return scored.map(item => item.h);
 }
 
 function findHadithByReferenceQuery(query) {
@@ -1334,19 +1363,20 @@ function buildDidYouMeanSuggestions(query) {
   }
 
   if (suggestions.size < 5 && keywords.length) {
-    allHadithsCache
-      .map(h => {
-        const text = `${normalize(getEnglishText(h))} ${normalize(h.arabicText || '')}`;
-        const overlap = keywords.filter(keyword => text.includes(keyword)).length;
-        return { h, overlap };
-      })
-      .filter(item => item.overlap > 0)
-      .sort((a, b) => b.overlap - a.overlap)
-      .slice(0, 20)
-      .forEach(({ h }) => {
-        const phrase = extractSuggestionPhrase(h, keywords);
-        if (phrase) suggestions.add(phrase);
-      });
+    const topSuggestionCandidates = [];
+    for (const h of allHadithsCache) {
+      const fields = [getEnglishText(h), h.arabicText].filter(Boolean).map(normalize);
+      let overlap = 0;
+      for (const keyword of keywords) {
+        if (normalizedFieldsInclude(fields, keyword)) overlap += 1;
+      }
+      insertTopScored(topSuggestionCandidates, { h, score: overlap }, 20);
+    }
+
+    topSuggestionCandidates.forEach(({ h }) => {
+      const phrase = extractSuggestionPhrase(h, keywords);
+      if (phrase) suggestions.add(phrase);
+    });
   }
 
   return [...suggestions]
