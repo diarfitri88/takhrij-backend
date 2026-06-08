@@ -1,6 +1,10 @@
 const fs = require('fs');
 const path = require('path');
-const { sanitizeNarratorChain, extractNarratorChainFromArabic } = require('../server');
+const {
+  sanitizeNarratorChain,
+  extractNarratorChainFromArabic,
+  extractArabicNarratorNamesFromArabic
+} = require('../server');
 
 const valid = sanitizeNarratorChain('Yahya -> Waki -> Sufyan -> Ayyub');
 console.log(`Valid chain: ${valid}`);
@@ -47,7 +51,18 @@ for (const sample of samples) {
   if (!hadith) throw new Error(`Could not find ${sample.ref}`);
 
   const chain = extractNarratorChainFromArabic(hadith.arabic);
+  const arabicNames = extractArabicNarratorNamesFromArabic(hadith.arabic);
   console.log(`${sample.ref}: ${chain}`);
+
+  if (sample.ref === 'abudawud:1110') {
+    const joinedArabicNames = arabicNames.join(' -> ');
+    if (/(?:\u0627\u0644\u062D\u0628\u0648\u0629|\u064A\u0648\u0645 \u0627\u0644\u062C\u0645\u0639\u0629|\u0627\u0644\u0627\u0645\u0627\u0645 \u064A\u062E\u0637\u0628)/.test(joinedArabicNames)) {
+      throw new Error(`Matn text leaked into Arabic fallback names for ${sample.ref}: ${joinedArabicNames}`);
+    }
+    if (!joinedArabicNames.includes('\u0627\u0628\u064A\u0647')) {
+      throw new Error(`Expected Arabic fallback names for ${sample.ref} to end before matn after the final narrator, got "${joinedArabicNames}"`);
+    }
+  }
 
   if (sample.expected) {
     if (chain !== sample.expected) {

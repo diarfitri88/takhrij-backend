@@ -857,6 +857,10 @@ function sanitizeNarratorChain(chain = '') {
 const ARABIC_TRANSMISSION_CUE_PATTERN = '(?:\\u062D\\u062F\\u062B\\u0646\\u0627|\\u062D\\u062F\\u062B\\u0646\\u064A|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u0627|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u064A|[\\u0623\\u0627]\\u0646\\u0628[\\u0623\\u0627]\\u0646\\u0627|\\u0639\\u0646(?=\\s)|\\u0633\\u0645\\u0639\\u062A|\\u0633\\u0645\\u0639)';
 const ARABIC_TRANSMISSION_CUE_REGEX = new RegExp(ARABIC_TRANSMISSION_CUE_PATTERN, 'g');
 const ARABIC_PROPHET_STOP_REGEX = new RegExp('^(?:\\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0644\\u0646\\u0628\\u064A|\\u0627\\u0644\\u0644\\u0647 \\u062A\\u0628\\u0627\\u0631\\u0643|\\u0627\\u0644\\u0644\\u0647 \\u0639\\u0632 \\u0648\\u062C\\u0644)');
+const ARABIC_MATN_START_PATTERN = '(?:\\u0627\\u0646 \\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0646 \\u0627\\u0644\\u0646\\u0628\\u064A|\\u0642\\u0627\\u0644 \\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0639\\u0646 \\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0646\\u0647\\u0649|\\u0627\\u0645\\u0631|\\u0633\\u0626\\u0644|\\u0630\\u0643\\u0631|\\u0635\\u0644\\u0649 \\u0627\\u0644\\u0644\\u0647 \\u0639\\u0644\\u064A\\u0647 \\u0648\\u0633\\u0644\\u0645|\\u0631\\u0636\\u064A \\u0627\\u0644\\u0644\\u0647 \\u0639\\u0646\\u0647)';
+const ARABIC_MATN_START_REGEX = new RegExp(ARABIC_MATN_START_PATTERN);
+const ARABIC_MATN_START_AT_BEGIN_REGEX = new RegExp('^\\s*' + ARABIC_MATN_START_PATTERN);
+const ARABIC_NAME_STOP_SPLIT_REGEX = new RegExp(`(?:(?:^|\\s)[\\u0623\\u0627]\\u0646\\s+|(?:^|\\s)[\\u0623\\u0627]\\u0646\\u0647\\s*|\\u064A\\u0642\\u0648\\u0644|\\u0639\\u0644\\u0649 \\u0627\\u0644\\u0645\\u0646\\u0628\\u0631|\\u0648\\u0647\\u0630\\u0627 \\u062D\\u062F\\u064A\\u062B\\u0647|\\u064A\\u0639\\u0646\\u064A|\\u0642\\u0627\\u0644|\\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0644\\u0646\\u0628\\u064A|${ARABIC_MATN_START_PATTERN})`);
 
 function normalizeArabicForChain(text = '') {
   return String(text || '')
@@ -895,6 +899,13 @@ function transliterateArabicLetters(text = '') {
     .replace(/\b(al)\s+/gi, 'al-')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isMatnContextForArabicCue(text = '', cueIndex = 0, cue = '', namesFound = 0) {
+  if (namesFound < 2) return false;
+  const before = text.slice(Math.max(0, cueIndex - 35), cueIndex).trim();
+  if (ARABIC_MATN_START_REGEX.test(before)) return true;
+  return cue === '\u0639\u0646' && /(?:^|\s)(?:\u0646\u0647\u0649|\u0627\u0645\u0631|\u0633\u0626\u0644|\u0630\u0643\u0631)\s*$/.test(before);
 }
 
 function hasArabicScript(text = '') {
@@ -990,16 +1001,18 @@ function extractNarratorChainFromArabic(arabic = '') {
     const cue = matches[index][0];
     const routePrefix = text.slice(Math.max(0, matches[index].index - 6), matches[index].index);
     if (index > 0 && names.length >= 2 && /\u062D\s+\u0648\s*$/.test(routePrefix)) break;
+    if (isMatnContextForArabicCue(text, matches[index].index, cue, names.length)) break;
 
     const start = matches[index].index + cue.length;
     const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
     const segment = text.slice(start, end).trim();
 
     if (!segment) continue;
+    if (names.length >= 2 && ARABIC_MATN_START_AT_BEGIN_REGEX.test(segment.slice(0, 80))) break;
     if (ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
     if (cue === '\u0633\u0645\u0639\u062A' && ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
 
-    const name = cleanArabicNarratorName(segment.split(/(?:(?:^|\s)[\u0623\u0627]\u0646\s+|(?:^|\s)[\u0623\u0627]\u0646\u0647\s*|\u064A\u0642\u0648\u0644|\u0639\u0644\u0649 \u0627\u0644\u0645\u0646\u0628\u0631|\u0648\u0647\u0630\u0627 \u062D\u062F\u064A\u062B\u0647|\u064A\u0639\u0646\u064A|\u0642\u0627\u0644|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/)[0]);
+    const name = cleanArabicNarratorName(segment.split(ARABIC_NAME_STOP_SPLIT_REGEX)[0]);
     if (
       name &&
       name.length >= 2 &&
@@ -1038,16 +1051,18 @@ function extractArabicNarratorNamesFromArabic(arabic = '') {
     const cue = matches[index][0];
     const routePrefix = text.slice(Math.max(0, matches[index].index - 6), matches[index].index);
     if (index > 0 && names.length >= 2 && /\u062D\s+\u0648\s*$/.test(routePrefix)) break;
+    if (isMatnContextForArabicCue(text, matches[index].index, cue, names.length)) break;
 
     const start = matches[index].index + cue.length;
     const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
     const segment = text.slice(start, end).trim();
 
     if (!segment) continue;
+    if (names.length >= 2 && ARABIC_MATN_START_AT_BEGIN_REGEX.test(segment.slice(0, 80))) break;
     if (ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
     if (cue === '\u0633\u0645\u0639\u062A' && ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
 
-    const name = cleanArabicNarratorName(segment.split(/(?:(?:^|\s)[\u0623\u0627]\u0646\s+|(?:^|\s)[\u0623\u0627]\u0646\u0647\s*|\u064A\u0642\u0648\u0644|\u0639\u0644\u0649 \u0627\u0644\u0645\u0646\u0628\u0631|\u0648\u0647\u0630\u0627 \u062D\u062F\u064A\u062B\u0647|\u064A\u0639\u0646\u064A|\u0642\u0627\u0644|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/)[0]);
+    const name = cleanArabicNarratorName(segment.split(ARABIC_NAME_STOP_SPLIT_REGEX)[0]);
     if (
       name &&
       name.length >= 2 &&
@@ -1842,5 +1857,6 @@ module.exports = {
   normalizeArabicForDetection,
   sanitizeNarratorChain,
   extractNarratorChainFromArabic,
+  extractArabicNarratorNamesFromArabic,
   formatDidYouMeanFallback
 };
