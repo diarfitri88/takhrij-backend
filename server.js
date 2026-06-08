@@ -23,7 +23,7 @@ const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || 'true').toLowerC
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v7-chain-normalized';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v8-gpt-chain';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -1034,11 +1034,7 @@ function resolveNarratorChainResult(parsedChain, arabicText = '') {
     return { chain: sanitized, chainSource: 'gpt' };
   }
 
-  const fallback = extractNarratorChainFromArabic(arabicText);
-  return {
-    chain: fallback,
-    chainSource: fallback === 'Chain not available' ? 'unavailable' : 'fallback'
-  };
+  return { chain: 'Chain not available', chainSource: 'unavailable' };
 }
 
 function logChainExtraction({ reference, arabicText, aiChain, finalChain }) {
@@ -1062,8 +1058,7 @@ function parseAiCommentary(raw = '') {
 
   const commentaryMatch = cleaned.match(commentaryRegex);
   const chainMatch = cleaned.match(chainRegex);
-  const rawChain = chainMatch?.[1] || '';
-  const chain = sanitizeNarratorChain(rawChain);
+  const chain = sanitizeNarratorChain(chainMatch?.[1] || '');
 
   let commentary = commentaryMatch?.[1]?.trim() || '';
   if (!commentary) {
@@ -1078,8 +1073,7 @@ function parseAiCommentary(raw = '') {
 
   return {
     commentary: commentary || 'Commentary was not available for this hadith. Please refer to qualified scholars for detailed explanation.',
-    chain,
-    rawChain
+    chain
   };
 }
 
@@ -1633,9 +1627,7 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
     const parsedCommentary = parseAiCommentary(raw);
-    const chainResult = resolveNarratorChainResult(parsedCommentary.rawChain, arabicFull);
-    const finalChain = chainResult.chain;
-    logChainExtraction({ reference, arabicText: arabicFull, aiChain: parsedCommentary.rawChain, finalChain });
+    logChainExtraction({ reference, arabicText: arabicFull, aiChain: parsedCommentary.chain, finalChain: parsedCommentary.chain });
     const guardedCommentary = polishCommentaryLanguage(applyWeakReportCommentaryGuard(
       removeUnneededFurtherStudy(parsedCommentary.commentary, authenticity.status),
       authenticity.status
@@ -1643,8 +1635,8 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
 
     const payload = {
       commentary: guardedCommentary,
-      chain: finalChain,
-      chainSource: chainResult.chainSource,
+      chain: parsedCommentary.chain,
+      chainSource: parsedCommentary.chain === 'Chain not available' ? 'unavailable' : 'gpt',
       evaluation: '',
       authenticityStatus: authenticity.status,
       authenticitySource: authenticity.source,
