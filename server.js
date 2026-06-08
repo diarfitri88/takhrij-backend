@@ -795,6 +795,31 @@ function normalizeCommonNarratorTransliteration(name = '') {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+function isReadableFallbackNarratorName(name = '') {
+  const cleaned = String(name || '').trim();
+  if (!cleaned || cleaned.length > 55 || /[^\x00-\x7F]/.test(cleaned)) return false;
+
+  const roughFragments = /\b(?:Byd|Abyh|Aljrmy|Alwhab|Qlabah|Msrhd|Hshym|Zhdm|Almqry|Mrhwm|Alhbwah|Aljmah|Walamam|Ykhtb|Wf|Shl)\b/i;
+  if (roughFragments.test(cleaned)) return false;
+
+  const allowedShortWords = new Set(['al', 'ibn', 'bin']);
+  const words = cleaned
+    .replace(/[.-]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) return false;
+
+  return words.every(word => {
+    const lower = word.toLowerCase();
+    if (allowedShortWords.has(lower)) return true;
+    if (lower.length <= 2) return false;
+    if (lower.length >= 4 && !/[aeiou]/i.test(lower)) return false;
+    return true;
+  });
+}
+
 function sanitizeNarratorChain(chain = '') {
   const cleaned = String(chain || '')
     .replace(/\*\*/g, '')
@@ -992,6 +1017,10 @@ function extractNarratorChainFromArabic(arabic = '') {
 
   const invalidNamePattern = /(?:\u0627\u0644\u0627\u0633\u0644\u0627\u0645|\u0627\u0644\u0627\u064A\u0645\u0627\u0646|\u0627\u0644\u0627\u062D\u0633\u0627\u0646|\u0627\u0644\u0633\u0627\u0639\u0629|\u0627\u0645\u0627\u0631\u062A\u0647\u0627|\u0628\u0627\u0639\u0644\u0645|\u064A\u0645\u064A\u0646\u0647)/;
   const uniqueNames = names.filter((name, index, array) => name && !invalidNamePattern.test(name) && array.indexOf(name) === index).slice(0, 20);
+  if (uniqueNames.some(name => !isReadableFallbackNarratorName(name))) {
+    return 'Chain not available';
+  }
+
   return uniqueNames.length >= 2 ? uniqueNames.join(' -> ') : 'Chain not available';
 }
 

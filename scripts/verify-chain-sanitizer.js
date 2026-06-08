@@ -36,6 +36,7 @@ const samples = [
   { file: 'muslim.json', ref: 'muslim:8a' },
   { file: 'muslim.json', ref: 'muslim:13a' },
   { file: 'abudawud.json', ref: 'abudawud:3660' },
+  { file: 'abudawud.json', ref: 'abudawud:1110', expected: 'Chain not available' },
   { file: 'abudawud.json', ref: 'abudawud:9' },
   { file: 'tirmidhi.json', ref: 'tirmidhi:2970' }
 ];
@@ -47,6 +48,13 @@ for (const sample of samples) {
 
   const chain = extractNarratorChainFromArabic(hadith.arabic);
   console.log(`${sample.ref}: ${chain}`);
+
+  if (sample.expected) {
+    if (chain !== sample.expected) {
+      throw new Error(`Expected ${sample.ref} chain to be "${sample.expected}", got "${chain}"`);
+    }
+    continue;
+  }
 
   if (chain === 'Chain not available') {
     throw new Error(`Expected fallback chain for ${sample.ref}`);
