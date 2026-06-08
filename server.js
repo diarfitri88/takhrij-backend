@@ -23,7 +23,7 @@ const USE_LIGHT_SEARCH = String(process.env.USE_LIGHT_SEARCH || 'true').toLowerC
 const commentaryCache = new Map();
 const MAX_COMMENTARY_CACHE_ENTRIES = 250;
 const COMMENTARY_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v8-gpt-chain';
+const COMMENTARY_CACHE_VERSION = 'lessons-benefits-spaced-v9-gpt-chain-fallback-transliteration';
 
 // ─── RATE LIMITING (Rolling 24-hour limit per IP) ───────────────────────────────
 const aiCallTracker = new Map(); // { 'IP': { count: x, lastReset: timestamp } }
@@ -685,7 +685,6 @@ function sanitizeNarratorBio(rawBio = '') {
     'region',
     'teachers',
     'students',
-    'why this narrator matters',
     'interesting fact'
   ];
   const sectionValues = new Map();
@@ -1024,6 +1023,74 @@ function extractNarratorChainFromArabic(arabic = '') {
   return uniqueNames.length >= 2 ? uniqueNames.join(' -> ') : 'Chain not available';
 }
 
+function extractArabicNarratorNamesFromArabic(arabic = '') {
+  const text = normalizeArabicForChain(arabic);
+  ARABIC_TRANSMISSION_CUE_REGEX.lastIndex = 0;
+  if (!ARABIC_TRANSMISSION_CUE_REGEX.test(text)) {
+    return [];
+  }
+
+  ARABIC_TRANSMISSION_CUE_REGEX.lastIndex = 0;
+  const matches = [...text.matchAll(ARABIC_TRANSMISSION_CUE_REGEX)];
+  const names = [];
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const cue = matches[index][0];
+    const routePrefix = text.slice(Math.max(0, matches[index].index - 6), matches[index].index);
+    if (index > 0 && names.length >= 2 && /\u062D\s+\u0648\s*$/.test(routePrefix)) break;
+
+    const start = matches[index].index + cue.length;
+    const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
+    const segment = text.slice(start, end).trim();
+
+    if (!segment) continue;
+    if (ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
+    if (cue === '\u0633\u0645\u0639\u062A' && ARABIC_PROPHET_STOP_REGEX.test(segment)) break;
+
+    const name = cleanArabicNarratorName(segment.split(/(?:(?:^|\s)[\u0623\u0627]\u0646\s+|(?:^|\s)[\u0623\u0627]\u0646\u0647\s*|\u064A\u0642\u0648\u0644|\u0639\u0644\u0649 \u0627\u0644\u0645\u0646\u0628\u0631|\u0648\u0647\u0630\u0627 \u062D\u062F\u064A\u062B\u0647|\u064A\u0639\u0646\u064A|\u0642\u0627\u0644|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/)[0]);
+    if (
+      name &&
+      name.length >= 2 &&
+      name.length <= 70 &&
+      !/(?:\u0643\u062A\u0627\u0628|\u0628\u0627\u0628|\u062D\u062F\u064A\u062B|\u0631\u0633\u0648\u0644 \u0627\u0644\u0644\u0647|\u0627\u0644\u0646\u0628\u064A)/.test(name)
+    ) {
+      names.push(name);
+      const afterQal = segment.split(/\u0642\u0627\u0644(?:\u0627)?/)[1] || '';
+      const afterQalMeaningful = afterQal.replace(/[\s:\u060C,.\-]+/g, '');
+      const continuesWithTransmission = new RegExp('^\\s*(?:[:\u060C,.-]\\s*)?' + ARABIC_TRANSMISSION_CUE_PATTERN).test(afterQal);
+      if (names.length >= 2 && afterQalMeaningful && !continuesWithTransmission) break;
+    }
+  }
+
+  const invalidNamePattern = /(?:\u0627\u0644\u0627\u0633\u0644\u0627\u0645|\u0627\u0644\u0627\u064A\u0645\u0627\u0646|\u0627\u0644\u0627\u062D\u0633\u0627\u0646|\u0627\u0644\u0633\u0627\u0639\u0629|\u0627\u0645\u0627\u0631\u062A\u0647\u0627|\u0628\u0627\u0639\u0644\u0645|\u064A\u0645\u064A\u0646\u0647)/;
+  return names
+    .filter((name, index, array) => name && !invalidNamePattern.test(name) && array.indexOf(name) === index)
+    .slice(0, 20);
+}
+
+async function transliterateArabicNarratorChainWithGpt(arabicNames = []) {
+  const names = Array.isArray(arabicNames) ? arabicNames.filter(Boolean) : [];
+  if (names.length < 2) return 'Chain not available';
+
+  try {
+    const raw = await callOpenRouter([
+      {
+        role: 'system',
+        content: 'Transliterate Arabic hadith narrator names into readable English. Return only names separated by ->. Do not add notes, labels, Arabic text, commentary, or explanations.'
+      },
+      {
+        role: 'user',
+        content: `Transliterate these Arabic hadith narrator names into readable English. Return only names separated by ->. Do not add notes.\n\n${names.join(' -> ')}`
+      }
+    ], { temperature: 0.0, max_tokens: 180 });
+
+    return sanitizeNarratorChain(String(raw || '').replace(/```[\s\S]*?```/g, '').trim());
+  } catch (err) {
+    console.error('❌ Fallback narrator transliteration error:', err.message);
+    return 'Chain not available';
+  }
+}
+
 function resolveNarratorChain(parsedChain, arabicText = '') {
   return resolveNarratorChainResult(parsedChain, arabicText).chain;
 }
@@ -1035,6 +1102,21 @@ function resolveNarratorChainResult(parsedChain, arabicText = '') {
   }
 
   return { chain: 'Chain not available', chainSource: 'unavailable' };
+}
+
+async function resolveNarratorChainResultWithGptFallback(parsedChain, arabicText = '') {
+  const primary = resolveNarratorChainResult(parsedChain, arabicText);
+  if (primary.chain !== 'Chain not available') {
+    return primary;
+  }
+
+  const arabicNames = extractArabicNarratorNamesFromArabic(arabicText);
+  const fallback = await transliterateArabicNarratorChainWithGpt(arabicNames);
+  if (fallback !== 'Chain not available') {
+    return { chain: fallback, chainSource: 'fallback-gpt' };
+  }
+
+  return primary;
 }
 
 function logChainExtraction({ reference, arabicText, aiChain, finalChain }) {
@@ -1627,7 +1709,8 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
     ], { temperature: 0.0, max_tokens: 700 });
     raw = raw.replace(/```[\s\S]*?```/g, '').trim();
     const parsedCommentary = parseAiCommentary(raw);
-    logChainExtraction({ reference, arabicText: arabicFull, aiChain: parsedCommentary.chain, finalChain: parsedCommentary.chain });
+    const chainResult = await resolveNarratorChainResultWithGptFallback(parsedCommentary.chain, arabicFull);
+    logChainExtraction({ reference, arabicText: arabicFull, aiChain: parsedCommentary.chain, finalChain: chainResult.chain });
     const guardedCommentary = polishCommentaryLanguage(applyWeakReportCommentaryGuard(
       removeUnneededFurtherStudy(parsedCommentary.commentary, authenticity.status),
       authenticity.status
@@ -1635,8 +1718,8 @@ If unsure, keep the chain list simple with only names found in the Arabic text.
 
     const payload = {
       commentary: guardedCommentary,
-      chain: parsedCommentary.chain,
-      chainSource: parsedCommentary.chain === 'Chain not available' ? 'unavailable' : 'gpt',
+      chain: chainResult.chain,
+      chainSource: chainResult.chainSource,
       evaluation: '',
       authenticityStatus: authenticity.status,
       authenticitySource: authenticity.source,
