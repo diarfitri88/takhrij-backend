@@ -716,17 +716,35 @@ function sanitizeNarratorBio(rawBio = '') {
       }
     });
 
+  const interestingFact = sanitizeNarratorInterestingFact(sectionValues.get('interesting fact'));
+
   const safeSections = [
     ['Birth/Death', sectionValues.get('birth/death')],
     ['Place/Region', sectionValues.get('place/region') || sectionValues.get('region')],
     ['Teachers', sectionValues.get('teachers')],
     ['Students', sectionValues.get('students')],
-    ['Interesting Fact', sectionValues.get('interesting fact')]
+    ['Interesting Fact', interestingFact]
   ];
 
   return safeSections
     .map(([label, value]) => `${label}:\n\n${value || 'Not clearly available.'}`)
     .join('\n\n');
+}
+
+function sanitizeNarratorInterestingFact(value = '') {
+  const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned || /^not clearly available\.?$/i.test(cleaned)) {
+    return 'Not clearly available.';
+  }
+
+  const vaguePraisePattern = /\b(?:was known for|played an important role|contributed significantly|was respected|important figure|significant figure|notable figure|well-known narrator|prominent narrator|contributed to hadith transmission|important in hadith transmission)\b/i;
+  const concreteDetailPattern = /\b(?:\d{2,4}|AH|Hijri|Hijrah|born|died|Madinah|Medina|Makkah|Mecca|Kufa|Basra|Damascus|Syria|Yemen|Egypt|Bukhari|Muslim|Sahih|Sunan|Muwatta|Musnad|Riyad|Adhkar|ibn|bint|Abu|Umm|al-)\b/i;
+
+  if (vaguePraisePattern.test(cleaned) && !concreteDetailPattern.test(cleaned)) {
+    return 'Not clearly available.';
+  }
+
+  return cleaned;
 }
 
 function stripSectionHeading(text = '', headingPattern) {
@@ -881,7 +899,7 @@ function isPlausibleNarratorChainSegment(name = '') {
   if (!cleaned || /[\u0600-\u06FF]/.test(cleaned)) return false;
   if (/^(?:his father|her father|their father|his mother|her mother)$/i.test(cleaned)) return true;
   if (cleaned.length < 4) return /^(?:amr|ali|ata)$/i.test(cleaned);
-  if (/\b(?:habwah|jumaa|jumuah|friday|imam|yakhtub|sermon|khutbah|forbade|commanded|asked|questioned|book of allah|quran|matn|text|topic|reward|virtue|prayer|fasting|zakat|hajj|women|man l)\b/i.test(cleaned)) return false;
+  if (/\b(?:habwah|jumaa|jumuah|friday|imam|yakhtub|sermon|khutbah|forbade|commanded|asked|questioned|book of allah|quran|matn|text|topic|reward|virtue|prayer|fasting|zakat|hajj|women|man l|abdullah l|unnamed narrator|unknown narrator|unknown|unclear|not specified)\b/i.test(cleaned)) return false;
   if (/\b(?:said|says|heard|from|that|when|while|until|whoever|whatever|wherever)\b/i.test(cleaned)) return false;
 
   const nameWords = cleaned.split(/\s+/).filter(Boolean);
@@ -899,8 +917,9 @@ function isPlausibleNarratorChainSegment(name = '') {
 function isValidNarratorBioName(name = '') {
   const cleaned = String(name || '').replace(/\s+/g, ' ').trim();
   if (!isPlausibleNarratorChainSegment(cleaned)) return false;
-  if (/^(?:his father|her father|their father|his mother|her mother|father|mother)$/i.test(cleaned)) return false;
+  if (/^(?:his father|her father|their father|his mother|her mother|father|mother|unnamed narrator|unknown narrator|unknown|unclear|not specified)$/i.test(cleaned)) return false;
   if (/^(?:abu|abi|ibn|bin|bint|al)$/i.test(cleaned)) return false;
+  if (cleaned.split(/\s+/).some(word => /^[A-Za-z]$/.test(word))) return false;
   return true;
 }
 
@@ -1861,7 +1880,7 @@ Students:
 
 Interesting Fact:
 
-[One memorable historical detail if widely known and reasonably reliable. If not known, write "Not clearly available."]
+[Only provide an interesting fact if it is widely known, reasonably reliable, and directly tied to the named narrator. Do not give generic praise or vague importance statements. If not certain, write exactly: "Not clearly available."]
 
 Important:
 * Do not discuss whether the narrator is reliable or weak.
@@ -1922,5 +1941,6 @@ module.exports = {
   extractArabicNarratorNamesFromArabic,
   isValidNarratorBioName,
   isPlausibleNarratorChainSegment,
+  sanitizeNarratorBio,
   formatDidYouMeanFallback
 };
