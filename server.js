@@ -846,7 +846,13 @@ function sanitizeNarratorChain(chain = '') {
   if (
     names.length < 2 ||
     names.length > 20 ||
-    names.some(name => name.length > 55 || sentencePattern.test(name) || /[\u0600-\u06FF]/.test(name) || /\s{2,}/.test(name))
+    names.some(name =>
+      name.length > 55 ||
+      sentencePattern.test(name) ||
+      /[\u0600-\u06FF]/.test(name) ||
+      /\s{2,}/.test(name) ||
+      !isPlausibleNarratorChainSegment(name)
+    )
   ) {
     return 'Chain not available';
   }
@@ -854,10 +860,10 @@ function sanitizeNarratorChain(chain = '') {
   return names.join(' -> ');
 }
 
-const ARABIC_TRANSMISSION_CUE_PATTERN = '(?:\\u062D\\u062F\\u062B\\u0646\\u0627|\\u062D\\u062F\\u062B\\u0646\\u064A|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u0627|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u064A|[\\u0623\\u0627]\\u0646\\u0628[\\u0623\\u0627]\\u0646\\u0627|\\u0639\\u0646(?=\\s)|\\u0633\\u0645\\u0639\\u062A|\\u0633\\u0645\\u0639)';
+const ARABIC_TRANSMISSION_CUE_PATTERN = '(?:\\u062D\\u062F\\u062B\\u0646\\u0627|\\u062D\\u062F\\u062B\\u0646\\u064A|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u0627|[\\u0623\\u0627]\\u062E\\u0628\\u0631\\u0646\\u064A|[\\u0623\\u0627]\\u0646\\u0628[\\u0623\\u0627]\\u0646\\u0627|\\u0639\\u0646(?=\\s)|\\u0633\\u0645\\u0639\\u062A|\\u0633\\u0645\\u0639|\\u0630\\u0643\\u0631)';
 const ARABIC_TRANSMISSION_CUE_REGEX = new RegExp(ARABIC_TRANSMISSION_CUE_PATTERN, 'g');
 const ARABIC_PROPHET_STOP_REGEX = new RegExp('^(?:\\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0644\\u0646\\u0628\\u064A|\\u0627\\u0644\\u0644\\u0647 \\u062A\\u0628\\u0627\\u0631\\u0643|\\u0627\\u0644\\u0644\\u0647 \\u0639\\u0632 \\u0648\\u062C\\u0644)');
-const ARABIC_MATN_START_PATTERN = '(?:\\u0627\\u0646 \\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0646 \\u0627\\u0644\\u0646\\u0628\\u064A|\\u0642\\u0627\\u0644 \\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0639\\u0646 \\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0646\\u0647\\u0649|\\u0627\\u0645\\u0631|\\u0633\\u0626\\u0644|\\u0630\\u0643\\u0631|\\u0635\\u0644\\u0649 \\u0627\\u0644\\u0644\\u0647 \\u0639\\u0644\\u064A\\u0647 \\u0648\\u0633\\u0644\\u0645|\\u0631\\u0636\\u064A \\u0627\\u0644\\u0644\\u0647 \\u0639\\u0646\\u0647)';
+const ARABIC_MATN_START_PATTERN = '(?:[\\u0623\\u0627]\\u0646\\s+\\u0631\\u0633\\u0648\\u0644\\s+\\u0627\\u0644\\u0644\\u0647|[\\u0623\\u0627]\\u0646\\s+\\u0627\\u0644\\u0646\\u0628\\u064A|[\\u0623\\u0627]\\u0646\\s+\\u0631\\u062C\\u0644[\\u0627\\u064B]?|[\\u0623\\u0627]\\u0646\\s+\\u0627\\u0645\\u0631[\\u0623\\u0627]\\u0629|[\\u0623\\u0627]\\u0646\\s+\\u0639\\u0628\\u062F\\s+\\u0627\\u0644\\u0644\\u0647\\s+\\u0642\\u0627\\u0644|\\u0642\\u0627\\u0644\\s+\\u0631\\u0633\\u0648\\u0644\\s+\\u0627\\u0644\\u0644\\u0647|\\u0642\\u0627\\u0644\\s+\\u0627\\u0644\\u0646\\u0628\\u064A|\\u0633\\u0645\\u0639\\u062A\\s+\\u0631\\u0633\\u0648\\u0644\\s+\\u0627\\u0644\\u0644\\u0647|\\u0633\\u0645\\u0639\\u062A\\s+\\u0627\\u0644\\u0646\\u0628\\u064A|\\u0639\\u0646\\s+\\u0631\\u0633\\u0648\\u0644\\s+\\u0627\\u0644\\u0644\\u0647|\\u0639\\u0646\\s+\\u0627\\u0644\\u0646\\u0628\\u064A|\\u0643\\u0627\\u0646\\s+\\u0631\\u0633\\u0648\\u0644\\s+\\u0627\\u0644\\u0644\\u0647|\\u0642\\u0627\\u0644\\s+\\u0627\\u0644\\u0644\\u0647|\\u0641\\u064A\\s+\\u0643\\u062A\\u0627\\u0628\\s+\\u0627\\u0644\\u0644\\u0647|\\u0644\\u0639\\u0646\\s+\\u0627\\u0644\\u0644\\u0647|\\u0646\\u0647\\u0649|\\u0627\\u0645\\u0631|\\u0633\\u0627\\u0644|\\u0633\\u0626\\u0644|\\u0630\\u0643\\u0631|\\u0635\\u0644\\u0649\\s+\\u0627\\u0644\\u0644\\u0647\\s+\\u0639\\u0644\\u064A\\u0647\\s+\\u0648\\u0633\\u0644\\u0645|\\u0631\\u0636\\u064A\\s+\\u0627\\u0644\\u0644\\u0647\\s+\\u0639\\u0646)';
 const ARABIC_MATN_START_REGEX = new RegExp(ARABIC_MATN_START_PATTERN);
 const ARABIC_MATN_START_AT_BEGIN_REGEX = new RegExp('^\\s*' + ARABIC_MATN_START_PATTERN);
 const ARABIC_NAME_STOP_SPLIT_REGEX = new RegExp(`(?:(?:^|\\s)[\\u0623\\u0627]\\u0646\\s+|(?:^|\\s)[\\u0623\\u0627]\\u0646\\u0647\\s*|\\u064A\\u0642\\u0648\\u0644|\\u0639\\u0644\\u0649 \\u0627\\u0644\\u0645\\u0646\\u0628\\u0631|\\u0648\\u0647\\u0630\\u0627 \\u062D\\u062F\\u064A\\u062B\\u0647|\\u064A\\u0639\\u0646\\u064A|\\u0642\\u0627\\u0644|\\u0631\\u0633\\u0648\\u0644 \\u0627\\u0644\\u0644\\u0647|\\u0627\\u0644\\u0646\\u0628\\u064A|${ARABIC_MATN_START_PATTERN})`);
@@ -868,6 +874,58 @@ function normalizeArabicForChain(text = '') {
     .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isPlausibleNarratorChainSegment(name = '') {
+  const cleaned = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned || /[\u0600-\u06FF]/.test(cleaned)) return false;
+  if (/^(?:his father|her father|their father|his mother|her mother)$/i.test(cleaned)) return true;
+  if (cleaned.length < 4) return /^(?:amr|ali|ata)$/i.test(cleaned);
+  if (/\b(?:habwah|jumaa|jumuah|friday|imam|yakhtub|sermon|khutbah|forbade|commanded|asked|questioned|book of allah|quran|matn|text|topic|reward|virtue|prayer|fasting|zakat|hajj|women|man l)\b/i.test(cleaned)) return false;
+  if (/\b(?:said|says|heard|from|that|when|while|until|whoever|whatever|wherever)\b/i.test(cleaned)) return false;
+
+  const nameWords = cleaned.split(/\s+/).filter(Boolean);
+  if (!nameWords.length || nameWords.length > 8) return false;
+  const allowedShortWords = new Set(['al', 'ibn', 'bin', 'abu', 'abi', 'bint']);
+  return nameWords.every(word => {
+    const normalized = word.replace(/[^A-Za-z']/g, '');
+    if (!normalized) return false;
+    if (allowedShortWords.has(normalized.toLowerCase())) return true;
+    if (normalized.length < 3) return false;
+    return /[aeiou]/i.test(normalized);
+  });
+}
+
+function isValidNarratorBioName(name = '') {
+  const cleaned = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!isPlausibleNarratorChainSegment(cleaned)) return false;
+  if (/^(?:his father|her father|their father|his mother|her mother|father|mother)$/i.test(cleaned)) return false;
+  if (/^(?:abu|abi|ibn|bin|bint|al)$/i.test(cleaned)) return false;
+  return true;
+}
+
+function separateArabicIsnadFromMatn(arabic = '') {
+  const text = normalizeArabicForChain(arabic);
+  if (!text) return { isnad: '', matn: '', boundaryIndex: -1 };
+
+  const boundaryRegex = new RegExp(ARABIC_MATN_START_PATTERN, 'g');
+  const matches = [...text.matchAll(boundaryRegex)]
+    .filter(match => match.index > 0)
+    .sort((a, b) => a.index - b.index);
+
+  for (const match of matches) {
+    const before = text.slice(0, match.index).trim();
+    const transmissionMatches = before.match(new RegExp(ARABIC_TRANSMISSION_CUE_PATTERN, 'g')) || [];
+    if (transmissionMatches.length >= 1 && before.length >= 8) {
+      return {
+        isnad: before,
+        matn: text.slice(match.index).trim(),
+        boundaryIndex: match.index
+      };
+    }
+  }
+
+  return { isnad: text, matn: '', boundaryIndex: -1 };
 }
 
 function cleanArabicNarratorName(name = '') {
@@ -987,7 +1045,7 @@ function transliterateArabicNarratorName(name = '') {
 }
 
 function extractNarratorChainFromArabic(arabic = '') {
-  const text = normalizeArabicForChain(arabic);
+  const { isnad: text } = separateArabicIsnadFromMatn(arabic);
   ARABIC_TRANSMISSION_CUE_REGEX.lastIndex = 0;
   if (!ARABIC_TRANSMISSION_CUE_REGEX.test(text)) {
     return 'Chain not available';
@@ -1037,7 +1095,7 @@ function extractNarratorChainFromArabic(arabic = '') {
 }
 
 function extractArabicNarratorNamesFromArabic(arabic = '') {
-  const text = normalizeArabicForChain(arabic);
+  const { isnad: text } = separateArabicIsnadFromMatn(arabic);
   ARABIC_TRANSMISSION_CUE_REGEX.lastIndex = 0;
   if (!ARABIC_TRANSMISSION_CUE_REGEX.test(text)) {
     return [];
@@ -1757,6 +1815,9 @@ app.post('/narrator-bio', async (req, res) => {
     if (!name) {
       return res.json({ bio: 'No narrator name provided.' });
     }
+    if (!isValidNarratorBioName(name)) {
+      return res.json({ bio: 'Biography not available for this narrator name.' });
+    }
 
     const ip = getClientIp(req);
     if (!checkAiLimit(ip)) {
@@ -1856,7 +1917,10 @@ module.exports = {
   extractAuthenticityStatus,
   normalizeArabicForDetection,
   sanitizeNarratorChain,
+  separateArabicIsnadFromMatn,
   extractNarratorChainFromArabic,
   extractArabicNarratorNamesFromArabic,
+  isValidNarratorBioName,
+  isPlausibleNarratorChainSegment,
   formatDidYouMeanFallback
 };
